@@ -2,6 +2,7 @@ import { Separator } from "@base-ui/react";
 import {
   ArrowRightFromSquare,
   ArrowRotateLeft,
+  ArrowsRotateLeft,
   CircleInfo,
   FileArrowUp,
   FileText,
@@ -13,8 +14,11 @@ import {
   ListTimeline,
   Lock,
   Magnifier,
+  Pause,
   Person,
+  Play,
   Plus,
+  Power,
   TrashBin,
   Xmark,
 } from "@gravity-ui/icons";
@@ -25,6 +29,7 @@ import { cn } from "@/lib/cn";
 import { useCredentialsStore } from "@/stores/credentials";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
+import { useSmartSwitchStore } from "@/stores/smartSwitch";
 import { useSshStore } from "@/stores/ssh";
 import { useViewStore } from "@/stores/view";
 
@@ -53,6 +58,12 @@ export function CommandPalette() {
     fetch: fetchCredentials,
     openManager: openCredentialManager,
   } = useCredentialsStore();
+  const {
+    setEnabled: setSmartEnabled,
+    pause: pauseWatcher,
+    resume: resumeWatcher,
+    restart: restartWatcher,
+  } = useSmartSwitchStore();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -252,6 +263,66 @@ export function CommandPalette() {
     },
   ];
 
+  const smartSwitchCommands: Command[] = [
+    {
+      id: "smart-enable",
+      group: "Smart Switching",
+      label: "Enable Smart Switching",
+      Icon: Power,
+      action: () => {
+        setSmartEnabled(true);
+        closePalette();
+      },
+    },
+    {
+      id: "smart-disable",
+      group: "Smart Switching",
+      label: "Disable Smart Switching",
+      Icon: Power,
+      action: () => {
+        setSmartEnabled(false);
+        closePalette();
+      },
+    },
+    {
+      id: "smart-restart",
+      group: "Smart Switching",
+      label: "Restart Watcher",
+      Icon: ArrowsRotateLeft,
+      action: () => {
+        restartWatcher();
+        closePalette();
+      },
+    },
+    {
+      id: "smart-pause",
+      group: "Smart Switching",
+      label: "Pause Watcher",
+      Icon: Pause,
+      action: () => {
+        pauseWatcher();
+        closePalette();
+      },
+    },
+    {
+      id: "smart-resume",
+      group: "Smart Switching",
+      label: "Resume Watcher",
+      Icon: Play,
+      action: () => {
+        resumeWatcher();
+        closePalette();
+      },
+    },
+    {
+      id: "smart-settings",
+      group: "Smart Switching",
+      label: "Open Smart Switching Settings",
+      Icon: Gear,
+      action: () => navigate({ name: "settings" }),
+    },
+  ];
+
   const ALL_COMMANDS: Command[] = [
     ...navCommands,
     ...profileCommands,
@@ -259,6 +330,7 @@ export function CommandPalette() {
     ...repoCommands,
     ...sshCommands,
     ...credentialCommands,
+    ...smartSwitchCommands,
   ];
 
   const filtered = ALL_COMMANDS.filter(

@@ -1,0 +1,670 @@
+use crate::domain::{
+    audit::AuditEntry,
+    identity_switch::{ResolvedRepo, SmartSwitchStatus, SwitchEvent, SwitchStatus},
+    ports::{
+        AuditSink, IdentityResolver, IdentitySwitcher, ProfileStore, RepoStore, SwitchObserver,
+        WorkspaceWatcher,
+    },
+    settings::SmartSwitchingSettings,
+};
+use crate::error::AppError;
+use crate::services::profile_service::ProfileService;
+use chrono::{DateTime, Utc};
+use std::sync::{Arc, Mutex, MutexGuard};
+use uuid::Uuid;
+
+fn locked<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>, AppError> {
+    m.lock()
+        .map_err(|_| AppError::Internal("smart-switch lock poisoned".into()))
+}
+
+// ---- adapters ------------------------------------------------------------
+
+/// [`IdentityResolver`] backed by the repository store.
+pub(crate) struct RepoIdentityResolver {
+    repos: Arc<dyn RepoStore>,
+}
+
+impl RepoIdentityResolver {
+    pub(crate) fn new(repos: Arc<dyn RepoStore>) -> Self {
+        Self { repos }
+    }
+}
+
+impl IdentityResolver for RepoIdentityResolver {
+    fn resolve(&self, git_root: &str) -> Result<Option<ResolvedRepo>, AppError> {
+        Ok(self
+            .repos
+            .find_by_git_root(git_root)?
+            .map(|r| ResolvedRepo {
+                repo_id: r.id,
+                repo_name: r.name,
+                profile_id: r.active_profile_id,
+            }))
+    }
+
+    fn watchable_roots(&self) -> Result<Vec<String>, AppError> {
+        Ok(self
+            .repos
+            .load_all()?
+            .into_iter()
+            .map(|r| r.git_root)
+            .collect())
+    }
+}
+
+/// [`IdentitySwitcher`] that delegates to the existing profile-apply pipeline.
+/// This is the sole bridge from the orchestrator into identity mutation — the
+/// orchestrator never edits Git config or the credential vault itself.
+pub(crate) struct ProfileIdentitySwitcher {
+    profiles: Arc<ProfileService>,
+    store: Arc<dyn ProfileStore>,
+}
+
+impl ProfileIdentitySwitcher {
+    pub(crate) fn new(profiles: Arc<ProfileService>, store: Arc<dyn ProfileStore>) -> Self {
+        Self { profiles, store }
+    }
+}
+
+impl IdentitySwitcher for ProfileIdentitySwitcher {
+    fn active_profile_id(&self) -> Result<Option<Uuid>, AppError> {
+        self.store.get_active_id()
+    }
+
+    fn profile_label(&self, id: Uuid) -> Result<Option<String>, AppError> {
+        Ok(self.store.find(id)?.map(|p| p.label))
+    }
+
+    fn apply(&self, profile_id: Uuid) -> Result<(), AppError> {
+        self.profiles.apply(profile_id)
+    }
+}
+
+// ---- orchestrator --------------------------------------------------------
+
+/// The Smart Identity Switching orchestrator. It owns no I/O of its own: it
+/// coordinates the watcher, the resolver, and the existing profile-apply
+/// pipeline, records activity, and reports outcomes to the UI.
+pub(crate) struct IdentitySwitchService {
+    resolver: Arc<dyn IdentityResolver>,
+    switcher: Arc<dyn IdentitySwitcher>,
+    watcher: Arc<dyn WorkspaceWatcher>,
+    observer: Arc<dyn SwitchObserver>,
+    settings: Arc<dyn ProfileStore>,
+    audit: Arc<dyn AuditSink>,
+    started_at: Mutex<Option<DateTime<Utc>>>,
+    last_switch: Mutex<Option<SwitchEvent>>,
+}
+
+impl IdentitySwitchService {
+    pub(crate) fn new(
+        resolver: Arc<dyn IdentityResolver>,
+        switcher: Arc<dyn IdentitySwitcher>,
+        watcher: Arc<dyn WorkspaceWatcher>,
+        observer: Arc<dyn SwitchObserver>,
+        settings: Arc<dyn ProfileStore>,
+        audit: Arc<dyn AuditSink>,
+    ) -> Self {
+        Self {
+            resolver,
+            switcher,
+            watcher,
+            observer,
+            settings,
+            audit,
+            started_at: Mutex::new(None),
+            last_switch: Mutex::new(None),
+        }
+    }
+
+    fn config(&self) -> Result<SmartSwitchingSettings, AppError> {
+        Ok(self.settings.load_settings()?.smart_switching)
+    }
+
+    /// Bring the watcher in line with the persisted settings: watching every
+    /// tracked repository when enabled, stopped otherwise. Safe to call
+    /// repeatedly — used on launch, on settings change, and on restart.
+    pub(crate) fn reconcile(self: &Arc<Self>) -> Result<(), AppError> {
+        if self.config()?.enabled {
+            let roots = self.resolver.watchable_roots()?;
+            let weak = Arc::downgrade(self);
+            let on_activity: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |git_root| {
+                if let Some(this) = weak.upgrade() {
+                    this.handle_activity(&git_root);
+                }
+            });
+            self.watcher.start(&roots, on_activity)?;
+            let mut started = locked(&self.started_at)?;
+            if started.is_none() {
+                *started = Some(Utc::now());
+            }
+        } else {
+            self.watcher.stop();
+            *locked(&self.started_at)? = None;
+        }
+        self.emit_status();
+        Ok(())
+    }
+
+    /// Rebuild the watch set from the current repository list (e.g. after a scan).
+    pub(crate) fn restart(self: &Arc<Self>) -> Result<(), AppError> {
+        self.reconcile()
+    }
+
+    /// Persist the master toggle and reconcile the watcher.
+    pub(crate) fn set_enabled(self: &Arc<Self>, enabled: bool) -> Result<(), AppError> {
+        let mut settings = self.settings.load_settings()?;
+        settings.smart_switching.enabled = enabled;
+        self.settings.save_settings(&settings)?;
+        self.reconcile()
+    }
+
+    /// Start watching on launch when the user opted in and the feature is on.
+    pub(crate) fn maybe_start_on_launch(self: &Arc<Self>) -> Result<(), AppError> {
+        if self.config()?.start_on_launch {
+            self.reconcile()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn pause(&self) {
+        self.watcher.pause();
+        self.emit_status();
+    }
+
+    pub(crate) fn resume(&self) {
+        self.watcher.resume();
+        self.emit_status();
+    }
+
+    pub(crate) fn status(&self) -> Result<SmartSwitchStatus, AppError> {
+        let settings = self.config()?;
+        Ok(SmartSwitchStatus {
+            enabled: settings.enabled,
+            watching: self.watcher.is_watching(),
+            paused: self.watcher.is_paused(),
+            repos_monitored: u32::try_from(self.watcher.watched_count()).unwrap_or(u32::MAX),
+            last_switch: locked(&self.last_switch)?.clone(),
+            started_at: *locked(&self.started_at)?,
+        })
+    }
+
+    /// Apply the pending switch for a repository (used by the confirm-before-switch
+    /// flow). Re-resolves so a stale assignment can't be applied.
+    pub(crate) fn confirm(&self, git_root: &str) -> Result<(), AppError> {
+        let resolved = self
+            .resolver
+            .resolve(git_root)?
+            .ok_or_else(|| AppError::NotFound(format!("repository {git_root}")))?;
+        let profile_id = resolved
+            .profile_id
+            .ok_or_else(|| AppError::Validation("repository has no assigned profile".into()))?;
+        self.apply_switch(&resolved, profile_id, git_root)
+    }
+
+    /// Record that the user dismissed a pending switch.
+    pub(crate) fn cancel(&self, git_root: &str) -> Result<(), AppError> {
+        self.record("identity.switch_cancelled", None, git_root)
+    }
+
+    /// Entry point invoked from the watcher thread. Errors are swallowed so a
+    /// transient failure (repo removed, key missing, Git busy) never crashes the
+    /// watcher or the app.
+    fn handle_activity(&self, git_root: &str) {
+        let _ = self.process(git_root);
+    }
+
+    fn process(&self, git_root: &str) -> Result<(), AppError> {
+        let settings = self.config()?;
+        if !settings.enabled {
+            return Ok(());
+        }
+        let Some(resolved) = self.resolver.resolve(git_root)? else {
+            // Not a tracked repository — nothing to do.
+            return Ok(());
+        };
+        let Some(profile_id) = resolved.profile_id else {
+            self.record("identity.no_assignment", None, git_root)?;
+            self.emit_switch(SwitchStatus::NoAssignment, &resolved, None, git_root)?;
+            return Ok(());
+        };
+        if self.switcher.active_profile_id()? == Some(profile_id) {
+            self.record("identity.same_profile", Some(profile_id), git_root)?;
+            return Ok(());
+        }
+        if settings.confirm_before_switch {
+            self.emit_switch(
+                SwitchStatus::PendingConfirmation,
+                &resolved,
+                Some(profile_id),
+                git_root,
+            )?;
+            return Ok(());
+        }
+        self.apply_switch(&resolved, profile_id, git_root)
+    }
+
+    fn apply_switch(
+        &self,
+        resolved: &ResolvedRepo,
+        profile_id: Uuid,
+        git_root: &str,
+    ) -> Result<(), AppError> {
+        // The existing pipeline switches git config + HTTPS credentials + active
+        // marker atomically, rolling back on failure. SSH follows via the managed
+        // `~/.ssh/config` block.
+        self.switcher.apply(profile_id)?;
+        self.record("identity.auto_switch", Some(profile_id), git_root)?;
+        let event =
+            self.build_event(SwitchStatus::Switched, resolved, Some(profile_id), git_root)?;
+        *locked(&self.last_switch)? = Some(event.clone());
+        self.observer.switched(&event);
+        self.emit_status();
+        Ok(())
+    }
+
+    fn emit_switch(
+        &self,
+        status: SwitchStatus,
+        resolved: &ResolvedRepo,
+        profile_id: Option<Uuid>,
+        git_root: &str,
+    ) -> Result<(), AppError> {
+        let event = self.build_event(status, resolved, profile_id, git_root)?;
+        self.observer.switched(&event);
+        Ok(())
+    }
+
+    fn build_event(
+        &self,
+        status: SwitchStatus,
+        resolved: &ResolvedRepo,
+        profile_id: Option<Uuid>,
+        git_root: &str,
+    ) -> Result<SwitchEvent, AppError> {
+        let profile_label = match profile_id {
+            Some(id) => self.switcher.profile_label(id)?,
+            None => None,
+        };
+        Ok(SwitchEvent {
+            status,
+            git_root: git_root.to_string(),
+            repo_id: Some(resolved.repo_id),
+            repo_name: Some(resolved.repo_name.clone()),
+            profile_id,
+            profile_label,
+            at: Utc::now(),
+        })
+    }
+
+    fn emit_status(&self) {
+        if let Ok(status) = self.status() {
+            self.observer.status_changed(&status);
+        }
+    }
+
+    fn record(
+        &self,
+        action: &str,
+        profile_id: Option<Uuid>,
+        git_root: &str,
+    ) -> Result<(), AppError> {
+        self.audit.append(&AuditEntry {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            action: action.into(),
+            profile_id,
+            repo_path: Some(git_root.to_string()),
+        })
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::unwrap_in_result,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+mod tests {
+    use super::*;
+    use crate::domain::{profile::Profile, settings::AppSettings};
+
+    // ---- mock ports ------------------------------------------------------
+
+    #[derive(Default)]
+    struct MockResolver {
+        by_root: Mutex<Vec<(String, ResolvedRepo)>>,
+        roots: Mutex<Vec<String>>,
+    }
+    impl MockResolver {
+        fn add(&self, git_root: &str, repo_id: Uuid, name: &str, profile_id: Option<Uuid>) {
+            self.by_root.lock().unwrap().push((
+                git_root.into(),
+                ResolvedRepo {
+                    repo_id,
+                    repo_name: name.into(),
+                    profile_id,
+                },
+            ));
+            self.roots.lock().unwrap().push(git_root.into());
+        }
+    }
+    impl IdentityResolver for MockResolver {
+        fn resolve(&self, git_root: &str) -> Result<Option<ResolvedRepo>, AppError> {
+            Ok(self
+                .by_root
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(r, _)| r == git_root)
+                .map(|(_, v)| ResolvedRepo {
+                    repo_id: v.repo_id,
+                    repo_name: v.repo_name.clone(),
+                    profile_id: v.profile_id,
+                }))
+        }
+        fn watchable_roots(&self) -> Result<Vec<String>, AppError> {
+            Ok(self.roots.lock().unwrap().clone())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockSwitcher {
+        active: Mutex<Option<Uuid>>,
+        applied: Mutex<Vec<Uuid>>,
+        labels: Mutex<Vec<(Uuid, String)>>,
+    }
+    impl IdentitySwitcher for MockSwitcher {
+        fn active_profile_id(&self) -> Result<Option<Uuid>, AppError> {
+            Ok(*self.active.lock().unwrap())
+        }
+        fn profile_label(&self, id: Uuid) -> Result<Option<String>, AppError> {
+            Ok(self
+                .labels
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(i, _)| *i == id)
+                .map(|(_, l)| l.clone()))
+        }
+        fn apply(&self, profile_id: Uuid) -> Result<(), AppError> {
+            self.applied.lock().unwrap().push(profile_id);
+            *self.active.lock().unwrap() = Some(profile_id);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockWatcher {
+        watching: Mutex<bool>,
+        paused: Mutex<bool>,
+        count: Mutex<usize>,
+        starts: Mutex<u32>,
+    }
+    impl WorkspaceWatcher for MockWatcher {
+        fn start(
+            &self,
+            git_roots: &[String],
+            _on_activity: Arc<dyn Fn(String) + Send + Sync>,
+        ) -> Result<(), AppError> {
+            *self.watching.lock().unwrap() = true;
+            *self.paused.lock().unwrap() = false;
+            *self.count.lock().unwrap() = git_roots.len();
+            *self.starts.lock().unwrap() += 1;
+            Ok(())
+        }
+        fn stop(&self) {
+            *self.watching.lock().unwrap() = false;
+            *self.count.lock().unwrap() = 0;
+        }
+        fn pause(&self) {
+            *self.paused.lock().unwrap() = true;
+        }
+        fn resume(&self) {
+            *self.paused.lock().unwrap() = false;
+        }
+        fn is_watching(&self) -> bool {
+            *self.watching.lock().unwrap()
+        }
+        fn is_paused(&self) -> bool {
+            *self.paused.lock().unwrap()
+        }
+        fn watched_count(&self) -> usize {
+            *self.count.lock().unwrap()
+        }
+    }
+
+    #[derive(Default)]
+    struct MockObserver {
+        events: Mutex<Vec<SwitchEvent>>,
+        statuses: Mutex<Vec<SmartSwitchStatus>>,
+    }
+    impl SwitchObserver for MockObserver {
+        fn switched(&self, event: &SwitchEvent) {
+            self.events.lock().unwrap().push(event.clone());
+        }
+        fn status_changed(&self, status: &SmartSwitchStatus) {
+            self.statuses.lock().unwrap().push(status.clone());
+        }
+    }
+
+    struct MockSettingsStore {
+        settings: Mutex<AppSettings>,
+    }
+    impl ProfileStore for MockSettingsStore {
+        fn load_all(&self) -> Result<Vec<Profile>, AppError> {
+            Ok(vec![])
+        }
+        fn find(&self, _id: Uuid) -> Result<Option<Profile>, AppError> {
+            Ok(None)
+        }
+        fn save(&self, _profile: &Profile) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn delete(&self, _id: Uuid) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn load_settings(&self) -> Result<AppSettings, AppError> {
+            Ok(self.settings.lock().unwrap().clone())
+        }
+        fn save_settings(&self, settings: &AppSettings) -> Result<(), AppError> {
+            *self.settings.lock().unwrap() = settings.clone();
+            Ok(())
+        }
+        fn get_active_id(&self) -> Result<Option<Uuid>, AppError> {
+            Ok(None)
+        }
+        fn set_active_id(&self, _id: Option<Uuid>) -> Result<(), AppError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockAudit {
+        entries: Mutex<Vec<AuditEntry>>,
+    }
+    impl AuditSink for MockAudit {
+        fn append(&self, entry: &AuditEntry) -> Result<(), AppError> {
+            self.entries.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+        fn read_all(&self) -> Result<Vec<AuditEntry>, AppError> {
+            Ok(self.entries.lock().unwrap().clone())
+        }
+    }
+
+    // ---- fixtures --------------------------------------------------------
+
+    struct Harness {
+        svc: Arc<IdentitySwitchService>,
+        resolver: Arc<MockResolver>,
+        switcher: Arc<MockSwitcher>,
+        watcher: Arc<MockWatcher>,
+        observer: Arc<MockObserver>,
+        audit: Arc<MockAudit>,
+    }
+
+    fn harness(smart: SmartSwitchingSettings) -> Harness {
+        let resolver = Arc::new(MockResolver::default());
+        let switcher = Arc::new(MockSwitcher::default());
+        let watcher = Arc::new(MockWatcher::default());
+        let observer = Arc::new(MockObserver::default());
+        let audit = Arc::new(MockAudit::default());
+        let settings = AppSettings {
+            smart_switching: smart,
+            ..AppSettings::default()
+        };
+        let store = Arc::new(MockSettingsStore {
+            settings: Mutex::new(settings),
+        });
+        let svc = Arc::new(IdentitySwitchService::new(
+            resolver.clone(),
+            switcher.clone(),
+            watcher.clone(),
+            observer.clone(),
+            store,
+            audit.clone(),
+        ));
+        Harness {
+            svc,
+            resolver,
+            switcher,
+            watcher,
+            observer,
+            audit,
+        }
+    }
+
+    fn enabled() -> SmartSwitchingSettings {
+        SmartSwitchingSettings {
+            enabled: true,
+            ..SmartSwitchingSettings::default()
+        }
+    }
+
+    fn actions(h: &Harness) -> Vec<String> {
+        h.audit
+            .read_all()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.action)
+            .collect()
+    }
+
+    // ---- tests -----------------------------------------------------------
+
+    #[test]
+    fn switches_when_assigned_profile_differs() {
+        let h = harness(enabled());
+        let pid = Uuid::new_v4();
+        h.switcher.labels.lock().unwrap().push((pid, "Work".into()));
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(pid));
+
+        h.svc.handle_activity("/repo/a");
+
+        assert_eq!(h.switcher.applied.lock().unwrap().as_slice(), &[pid]);
+        assert!(actions(&h).contains(&"identity.auto_switch".to_string()));
+        let events = h.observer.events.lock().unwrap();
+        assert_eq!(events.last().unwrap().status, SwitchStatus::Switched);
+        assert_eq!(
+            events.last().unwrap().profile_label.as_deref(),
+            Some("Work")
+        );
+    }
+
+    #[test]
+    fn no_switch_when_already_active() {
+        let h = harness(enabled());
+        let pid = Uuid::new_v4();
+        *h.switcher.active.lock().unwrap() = Some(pid);
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(pid));
+
+        h.svc.handle_activity("/repo/a");
+
+        assert!(h.switcher.applied.lock().unwrap().is_empty());
+        assert!(actions(&h).contains(&"identity.same_profile".to_string()));
+    }
+
+    #[test]
+    fn records_no_assignment() {
+        let h = harness(enabled());
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", None);
+
+        h.svc.handle_activity("/repo/a");
+
+        assert!(h.switcher.applied.lock().unwrap().is_empty());
+        assert!(actions(&h).contains(&"identity.no_assignment".to_string()));
+        assert_eq!(
+            h.observer.events.lock().unwrap().last().unwrap().status,
+            SwitchStatus::NoAssignment
+        );
+    }
+
+    #[test]
+    fn confirm_before_switch_defers_apply() {
+        let h = harness(SmartSwitchingSettings {
+            enabled: true,
+            confirm_before_switch: true,
+            ..SmartSwitchingSettings::default()
+        });
+        let pid = Uuid::new_v4();
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(pid));
+
+        h.svc.handle_activity("/repo/a");
+        assert!(h.switcher.applied.lock().unwrap().is_empty());
+        assert_eq!(
+            h.observer.events.lock().unwrap().last().unwrap().status,
+            SwitchStatus::PendingConfirmation
+        );
+
+        // Confirming applies it.
+        h.svc.confirm("/repo/a").unwrap();
+        assert_eq!(h.switcher.applied.lock().unwrap().as_slice(), &[pid]);
+        assert!(actions(&h).contains(&"identity.auto_switch".to_string()));
+    }
+
+    #[test]
+    fn cancel_records_activity() {
+        let h = harness(enabled());
+        h.svc.cancel("/repo/a").unwrap();
+        assert!(actions(&h).contains(&"identity.switch_cancelled".to_string()));
+    }
+
+    #[test]
+    fn disabled_ignores_activity() {
+        let h = harness(SmartSwitchingSettings::default());
+        let pid = Uuid::new_v4();
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(pid));
+        h.svc.handle_activity("/repo/a");
+        assert!(h.switcher.applied.lock().unwrap().is_empty());
+        assert!(actions(&h).is_empty());
+    }
+
+    #[test]
+    fn reconcile_starts_when_enabled_and_stops_when_disabled() {
+        let h = harness(enabled());
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", None);
+        h.resolver.add("/repo/b", Uuid::new_v4(), "b", None);
+
+        h.svc.reconcile().unwrap();
+        assert!(h.watcher.is_watching());
+        assert_eq!(h.svc.status().unwrap().repos_monitored, 2);
+
+        h.svc.set_enabled(false).unwrap();
+        assert!(!h.watcher.is_watching());
+        assert!(!h.svc.status().unwrap().enabled);
+    }
+
+    #[test]
+    fn pause_and_resume_toggle_status() {
+        let h = harness(enabled());
+        h.svc.reconcile().unwrap();
+        h.svc.pause();
+        assert!(h.svc.status().unwrap().paused);
+        h.svc.resume();
+        assert!(!h.svc.status().unwrap().paused);
+    }
+}

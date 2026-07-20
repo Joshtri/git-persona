@@ -6,6 +6,7 @@ import { CommandPalette } from "@/features/palette/CommandPalette";
 import { ProfilesView } from "@/features/profiles";
 import { ReposView } from "@/features/repos";
 import { SettingsView } from "@/features/settings/SettingsView";
+import { ConfirmSwitchDialog } from "@/features/smart-switch";
 import { SshView } from "@/features/ssh";
 import { useHotkey } from "@/hooks/useHotkey";
 import { isMod } from "@/lib/keyboard";
@@ -75,6 +76,7 @@ export function AppShell() {
       </div>
 
       <CommandPalette />
+      <ConfirmSwitchDialog />
       <ToastRegion />
     </div>
   );

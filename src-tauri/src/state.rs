@@ -2,16 +2,23 @@ use crate::{
     domain::ports::CredentialVault,
     infra::{
         audit_jsonl::JsonlAuditSink, credential_store_tauri::TauriCredentialStore,
-        git_config_gix::GixGitConfig, git_meta::FsGitMetadataReader, paths,
-        profile_store_tauri::TauriProfileStore, repo_scanner_fs::FsRepoScanner,
-        repo_store_tauri::TauriRepoStore, ssh_config_writer::FsSshConfigWriter,
-        ssh_key_generator::SshKeyPairGenerator, ssh_key_reader::SshKeyFileReader,
-        ssh_scanner_fs::FsSshScanner, ssh_store_tauri::TauriSshStore,
+        git_config_gix::GixGitConfig, git_dir_watcher::GitDirWatcher,
+        git_meta::FsGitMetadataReader, paths, profile_store_tauri::TauriProfileStore,
+        repo_scanner_fs::FsRepoScanner, repo_store_tauri::TauriRepoStore,
+        ssh_config_writer::FsSshConfigWriter, ssh_key_generator::SshKeyPairGenerator,
+        ssh_key_reader::SshKeyFileReader, ssh_scanner_fs::FsSshScanner,
+        ssh_store_tauri::TauriSshStore, switch_observer_tauri::TauriSwitchObserver,
     },
     services::{
-        activity_service::ActivityService, credential_service::CredentialService,
-        profile_service::ProfileService, repo_service::RepoService,
-        settings_service::SettingsService, ssh_service::SshService,
+        activity_service::ActivityService,
+        credential_service::CredentialService,
+        identity_switch_service::{
+            IdentitySwitchService, ProfileIdentitySwitcher, RepoIdentityResolver,
+        },
+        profile_service::ProfileService,
+        repo_service::RepoService,
+        settings_service::SettingsService,
+        ssh_service::SshService,
     },
 };
 use std::sync::Arc;
@@ -24,11 +31,12 @@ use crate::infra::credential_vault_noop::NoopCredentialVault;
 
 pub(crate) struct AppState {
     pub(crate) settings: SettingsService,
-    pub(crate) profiles: ProfileService,
+    pub(crate) profiles: Arc<ProfileService>,
     pub(crate) activity: ActivityService,
     pub(crate) repos: RepoService,
     pub(crate) ssh: SshService,
     pub(crate) credentials: Arc<CredentialService>,
+    pub(crate) identity_switch: Arc<IdentitySwitchService>,
 }
 
 impl AppState {
@@ -65,15 +73,36 @@ impl AppState {
             audit.clone(),
         ));
 
+        let profiles = Arc::new(ProfileService::new(
+            store.clone(),
+            repo_store.clone(),
+            git_config,
+            credentials.clone(),
+            audit.clone(),
+        ));
+
+        // Smart Identity Switching orchestrator (Sprint 6). It only coordinates
+        // existing services — the resolver reads the repo store, and the switcher
+        // delegates to the profile-apply pipeline.
+        let resolver = Arc::new(RepoIdentityResolver::new(repo_store.clone()));
+        let switcher = Arc::new(ProfileIdentitySwitcher::new(
+            profiles.clone(),
+            store.clone(),
+        ));
+        let watcher = Arc::new(GitDirWatcher::new());
+        let observer = Arc::new(TauriSwitchObserver::new(app.clone()));
+        let identity_switch = Arc::new(IdentitySwitchService::new(
+            resolver,
+            switcher,
+            watcher,
+            observer,
+            store.clone(),
+            audit.clone(),
+        ));
+
         Ok(Self {
             settings: SettingsService::new(store.clone()),
-            profiles: ProfileService::new(
-                store.clone(),
-                repo_store.clone(),
-                git_config,
-                credentials.clone(),
-                audit.clone(),
-            ),
+            profiles,
             activity: ActivityService::new(audit.clone()),
             repos: RepoService::new(repo_store, scanner, git_meta, audit.clone()),
             ssh: SshService::new(
@@ -86,6 +115,7 @@ impl AppState {
                 audit,
             ),
             credentials,
+            identity_switch,
         })
     }
 }

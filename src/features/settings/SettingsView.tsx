@@ -12,6 +12,7 @@ import { Switch } from "@/components/switch";
 import type { AppSettings, Theme } from "@/ipc/types.gen";
 import { useFeedbackStore } from "@/stores/feedback";
 import { useSettingsStore } from "@/stores/settings";
+import { useSmartSwitchStore } from "@/stores/smartSwitch";
 import { Select, type SelectOption } from "../inputs/non-form/select";
 import { SectionHeader } from "./components/Section.Header";
 import { SettingRow } from "./components/Section.SettingRow";
@@ -30,9 +31,21 @@ const THEME_OPTIONS: SelectOption[] = THEMES.map((theme) => ({
   value: theme,
 }));
 
+const DEFAULT_SMART = {
+  enabled: false,
+  auto_ssh: true,
+  auto_credential: true,
+  show_notification: true,
+  confirm_before_switch: false,
+  start_on_launch: false,
+};
+
 export function SettingsView() {
   const { data, loading, error, fetch, update } = useSettingsStore();
   const toast = useFeedbackStore((s) => s.toast);
+  const setSmartEnabled = useSmartSwitchStore((s) => s.setEnabled);
+  const patchSmart = useSmartSwitchStore((s) => s.patchSettings);
+  const smart = data?.smart_switching ?? DEFAULT_SMART;
 
   useEffect(() => {
     fetch();
@@ -70,7 +83,14 @@ export function SettingsView() {
   }, [selectedTheme]);
 
   const onSubmit = async (values: FormData) => {
-    await update(values as AppSettings);
+    // Preserve the Smart Switching block, which is managed by its own toggles.
+    const base: AppSettings = data ?? {
+      theme: "Dark",
+      show_audit_log: true,
+      auto_scan_repos: false,
+      smart_switching: DEFAULT_SMART,
+    };
+    await update({ ...base, ...values });
     toast("Settings saved", "success");
   };
 
@@ -121,6 +141,66 @@ export function SettingsView() {
             description="Open to system tray instead of main window."
           >
             <Switch checked={false} onCheckedChange={() => {}} disabled />
+          </SettingRow>
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Smart Switching */}
+      <section>
+        <SectionHeader
+          title="Smart Switching"
+          description="Automatically apply the assigned identity when you work in a repository."
+        />
+        <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) px-4 overflow-hidden">
+          <SettingRow
+            label="Enable Smart Switching"
+            description="Watch tracked repositories and switch identity on Git activity."
+          >
+            <Switch checked={smart.enabled} onCheckedChange={(v) => setSmartEnabled(v)} />
+          </SettingRow>
+          <SettingRow
+            label="Start watching on launch"
+            description="Resume watching automatically when GitPersona opens."
+          >
+            <Switch
+              checked={smart.start_on_launch}
+              onCheckedChange={(v) => patchSmart({ start_on_launch: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            label="Confirm before switch"
+            description="Ask for confirmation before applying an automatic switch."
+          >
+            <Switch
+              checked={smart.confirm_before_switch}
+              onCheckedChange={(v) => patchSmart({ confirm_before_switch: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            label="Show notification"
+            description="Show a toast when an identity is switched automatically."
+          >
+            <Switch
+              checked={smart.show_notification}
+              onCheckedChange={(v) => patchSmart({ show_notification: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            label="Auto SSH"
+            description="Follow the profile's SSH identity via the managed ~/.ssh/config."
+          >
+            <Switch checked={smart.auto_ssh} onCheckedChange={(v) => patchSmart({ auto_ssh: v })} />
+          </SettingRow>
+          <SettingRow
+            label="Auto credential"
+            description="Follow the profile's HTTPS credential in the Windows Credential Manager."
+          >
+            <Switch
+              checked={smart.auto_credential}
+              onCheckedChange={(v) => patchSmart({ auto_credential: v })}
+            />
           </SettingRow>
         </div>
       </section>

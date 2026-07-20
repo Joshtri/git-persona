@@ -20,7 +20,9 @@ pub(crate) async fn credential_create(
 ) -> Result<Credential, AppError> {
     // Own the secret in a zeroizing buffer for its whole (short) lifetime.
     let secret = Zeroizing::new(token);
-    state.credentials.create(profile_id, &host, username, &secret)
+    state
+        .credentials
+        .create(profile_id, &host, username, &secret)
 }
 
 #[tauri::command]
@@ -52,7 +54,10 @@ pub(crate) async fn credential_switch(
 }
 
 #[tauri::command]
-pub(crate) async fn credential_delete(id: Uuid, state: State<'_, AppState>) -> Result<(), AppError> {
+pub(crate) async fn credential_delete(
+    id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
     state.credentials.delete(id)
 }
 

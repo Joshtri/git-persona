@@ -4,7 +4,12 @@ use std::io::Read;
 use std::path::Path;
 
 /// Filenames that live in `~/.ssh` but are never private keys.
-const IGNORED_NAMES: &[&str] = &["known_hosts", "known_hosts.old", "authorized_keys", "config"];
+const IGNORED_NAMES: &[&str] = &[
+    "known_hosts",
+    "known_hosts.old",
+    "authorized_keys",
+    "config",
+];
 
 pub(crate) struct FsSshScanner;
 
@@ -74,7 +79,11 @@ mod tests {
     fn discovers_private_keys_and_ignores_the_rest() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        write(dir, "id_ed25519", "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
+        write(
+            dir,
+            "id_ed25519",
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n",
+        );
         write(dir, "id_rsa", "-----BEGIN RSA PRIVATE KEY-----\ndef\n");
         write(dir, "id_ed25519.pub", "ssh-ed25519 AAAA comment");
         write(dir, "known_hosts", "github.com ssh-ed25519 AAAA");

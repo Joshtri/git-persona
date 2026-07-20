@@ -14,6 +14,10 @@ use commands::{
         credential_assign_profile, credential_create, credential_delete, credential_list,
         credential_open_manager, credential_switch, credential_update,
     },
+    identity_switch::{
+        smart_switch_cancel, smart_switch_confirm, smart_switch_pause, smart_switch_restart,
+        smart_switch_resume, smart_switch_set_enabled, smart_switch_status,
+    },
     profiles::{
         profile_apply, profile_create, profile_delete, profile_get_active, profile_list,
         profile_update,
@@ -41,7 +45,12 @@ pub fn run() {
         .setup(|app| {
             let state =
                 state::AppState::init(app.handle()).expect("fatal: failed to initialise AppState");
+            // Resume Smart Switching before the state is moved into management,
+            // when the user opted to start watching on launch. Best-effort — a
+            // failure here must never block app startup.
+            let orchestrator = state.identity_switch.clone();
             app.manage(state);
+            let _ = orchestrator.maybe_start_on_launch();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -79,6 +88,13 @@ pub fn run() {
             credential_switch,
             credential_delete,
             credential_open_manager,
+            smart_switch_status,
+            smart_switch_set_enabled,
+            smart_switch_restart,
+            smart_switch_pause,
+            smart_switch_resume,
+            smart_switch_confirm,
+            smart_switch_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("fatal: error while running tauri application");
@@ -91,9 +107,10 @@ mod export_bindings {
         audit::AuditEntry,
         credential::{Credential, Protocol},
         identity::Identity,
+        identity_switch::{SmartSwitchStatus, SwitchEvent, SwitchStatus},
         profile::Profile,
         repo::{Repo, ScanProgress},
-        settings::{AppSettings, Theme},
+        settings::{AppSettings, SmartSwitchingSettings, Theme},
         ssh::{SshAlgorithm, SshKey},
     };
     use ts_rs::TS;
@@ -107,9 +124,13 @@ mod export_bindings {
         AuditEntry::export_all_to("../src/ipc/").unwrap();
         AppSettings::export_all_to("../src/ipc/").unwrap();
         Theme::export_all_to("../src/ipc/").unwrap();
+        SmartSwitchingSettings::export_all_to("../src/ipc/").unwrap();
         SshKey::export_all_to("../src/ipc/").unwrap();
         SshAlgorithm::export_all_to("../src/ipc/").unwrap();
         Credential::export_all_to("../src/ipc/").unwrap();
         Protocol::export_all_to("../src/ipc/").unwrap();
+        SmartSwitchStatus::export_all_to("../src/ipc/").unwrap();
+        SwitchEvent::export_all_to("../src/ipc/").unwrap();
+        SwitchStatus::export_all_to("../src/ipc/").unwrap();
     }
 }

@@ -19,6 +19,15 @@ function actionLabel(action: string): string {
     "ssh.assign": "Assigned SSH key to profile",
     "ssh.remove": "Removed SSH key",
     "ssh.config.updated": "Updated SSH config",
+    "credential.create": "Created credential",
+    "credential.update": "Updated credential",
+    "credential.assign": "Assigned credential to profile",
+    "credential.switch": "Switched active credential",
+    "credential.delete": "Deleted credential",
+    "identity.auto_switch": "Auto-switched identity",
+    "identity.same_profile": "Already on assigned profile",
+    "identity.no_assignment": "Repository has no assigned profile",
+    "identity.switch_cancelled": "Cancelled automatic switch",
   };
   return map[action] ?? action;
 }
@@ -31,6 +40,10 @@ function actionVariant(action: string): "default" | "success" | "warning" | "dan
   if (action === "ssh.import" || action === "ssh.generate") return "success";
   if (action === "ssh.remove") return "danger";
   if (action === "ssh.assign" || action === "ssh.config.updated") return "default";
+  if (action === "credential.create" || action === "credential.switch") return "success";
+  if (action === "credential.delete") return "danger";
+  if (action === "identity.auto_switch") return "success";
+  if (action === "identity.switch_cancelled") return "warning";
   return "default";
 }
 

@@ -6,6 +6,16 @@ export interface AppSettings {
   theme: Theme;
   show_audit_log: boolean;
   auto_scan_repos: boolean;
+  smart_switching: SmartSwitchingSettings;
+}
+
+export interface SmartSwitchingSettings {
+  enabled: boolean;
+  auto_ssh: boolean;
+  auto_credential: boolean;
+  show_notification: boolean;
+  confirm_before_switch: boolean;
+  start_on_launch: boolean;
 }
 
 export interface Identity {
@@ -76,4 +86,29 @@ export interface Credential {
   created_at: string;
   updated_at: string;
   last_used: string | null;
+}
+
+export type SwitchStatus =
+  | "Switched"
+  | "AlreadyActive"
+  | "NoAssignment"
+  | "PendingConfirmation";
+
+export interface SwitchEvent {
+  status: SwitchStatus;
+  git_root: string;
+  repo_id: string | null;
+  repo_name: string | null;
+  profile_id: string | null;
+  profile_label: string | null;
+  at: string;
+}
+
+export interface SmartSwitchStatus {
+  enabled: boolean;
+  watching: boolean;
+  paused: boolean;
+  repos_monitored: number;
+  last_switch: SwitchEvent | null;
+  started_at: string | null;
 }

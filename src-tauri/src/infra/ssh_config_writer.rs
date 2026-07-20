@@ -150,7 +150,10 @@ mod tests {
 
     #[test]
     fn replaces_only_managed_block() {
-        let first = FsSshConfigWriter::merge("Host keep\n    HostName keep.com\n", &[entry("a", "~/.ssh/a")]);
+        let first = FsSshConfigWriter::merge(
+            "Host keep\n    HostName keep.com\n",
+            &[entry("a", "~/.ssh/a")],
+        );
         let second = FsSshConfigWriter::merge(&first, &[entry("b", "~/.ssh/b")]);
         assert!(second.contains("Host keep"));
         assert!(second.contains("Host b"));
@@ -162,7 +165,10 @@ mod tests {
 
     #[test]
     fn empty_entries_removes_block_but_keeps_user_config() {
-        let with_block = FsSshConfigWriter::merge("Host keep\n    HostName keep.com\n", &[entry("a", "~/.ssh/a")]);
+        let with_block = FsSshConfigWriter::merge(
+            "Host keep\n    HostName keep.com\n",
+            &[entry("a", "~/.ssh/a")],
+        );
         let cleared = FsSshConfigWriter::merge(&with_block, &[]);
         assert!(cleared.contains("Host keep"));
         assert!(!cleared.contains(START));

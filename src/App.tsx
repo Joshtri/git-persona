@@ -4,6 +4,7 @@ import { useActivityStore } from "@/stores/activity";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
 import { useSettingsStore } from "@/stores/settings";
+import { useSmartSwitchStore } from "@/stores/smartSwitch";
 import "@/styles/index.css";
 
 function resolveTheme(preference: string | undefined, systemDark: boolean): "dark" | "light" {
@@ -20,6 +21,9 @@ export function App() {
     useProfilesStore.getState().fetch();
     useActivityStore.getState().fetch();
     useReposStore.getState().fetch();
+    // Subscribe to Smart Switching events + load its status once, app-wide, so
+    // auto-switch toasts and confirmations work regardless of the active view.
+    useSmartSwitchStore.getState().init();
   }, [fetchSettings]);
 
   useEffect(() => {
