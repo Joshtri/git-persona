@@ -39,7 +39,9 @@ impl TauriCredentialStore {
 
     fn read(store: &tauri_plugin_store::Store<tauri::Wry>) -> Result<Vec<Credential>, AppError> {
         match store.get(CREDENTIALS_KEY) {
-            Some(v) => serde_json::from_value(v.clone()).map_err(|e| AppError::Store(e.to_string())),
+            Some(v) => {
+                serde_json::from_value(v.clone()).map_err(|e| AppError::Store(e.to_string()))
+            }
             None => Ok(vec![]),
         }
     }

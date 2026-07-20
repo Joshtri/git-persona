@@ -1,6 +1,9 @@
 use crate::domain::{
     audit::AuditEntry,
-    ports::{AuditSink, ProfileStore, SshConfigWriter, SshKeyGenerator, SshKeyReader, SshScanner, SshStore},
+    ports::{
+        AuditSink, ProfileStore, SshConfigWriter, SshKeyGenerator, SshKeyReader, SshScanner,
+        SshStore,
+    },
     ssh::{GenerateParams, SshConfigEntry, SshKey},
 };
 use crate::error::AppError;
@@ -73,7 +76,12 @@ impl SshService {
         }
     }
 
-    fn log(&self, action: &str, profile_id: Option<Uuid>, target: Option<String>) -> Result<(), AppError> {
+    fn log(
+        &self,
+        action: &str,
+        profile_id: Option<Uuid>,
+        target: Option<String>,
+    ) -> Result<(), AppError> {
         self.audit.append(&AuditEntry {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
@@ -302,7 +310,13 @@ mod tests {
             Ok(self.keys.lock().unwrap().clone())
         }
         fn find(&self, id: Uuid) -> Result<Option<SshKey>, AppError> {
-            Ok(self.keys.lock().unwrap().iter().find(|k| k.id == id).cloned())
+            Ok(self
+                .keys
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|k| k.id == id)
+                .cloned())
         }
         fn find_by_path(&self, path: &str) -> Result<Option<SshKey>, AppError> {
             Ok(self
@@ -401,7 +415,13 @@ mod tests {
             Ok(self.profiles.lock().unwrap().clone())
         }
         fn find(&self, id: Uuid) -> Result<Option<Profile>, AppError> {
-            Ok(self.profiles.lock().unwrap().iter().find(|p| p.id == id).cloned())
+            Ok(self
+                .profiles
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|p| p.id == id)
+                .cloned())
         }
         fn save(&self, profile: &Profile) -> Result<(), AppError> {
             self.profiles.lock().unwrap().push(profile.clone());
@@ -499,7 +519,11 @@ mod tests {
     }
 
     fn audit_has(h: &Harness, action: &str) -> bool {
-        h.audit.read_all().unwrap().iter().any(|e| e.action == action)
+        h.audit
+            .read_all()
+            .unwrap()
+            .iter()
+            .any(|e| e.action == action)
     }
 
     // ---- tests -----------------------------------------------------------
@@ -549,7 +573,10 @@ mod tests {
     fn import_rejects_duplicate() {
         let h = harness(vec!["/ssh/id_ed25519"]);
         h.svc.import("/ssh/id_ed25519".into(), None, None).unwrap();
-        let err = h.svc.import("/ssh/id_ed25519".into(), None, None).unwrap_err();
+        let err = h
+            .svc
+            .import("/ssh/id_ed25519".into(), None, None)
+            .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)));
     }
 
@@ -609,7 +636,11 @@ mod tests {
         let h = harness(vec!["/ssh/a"]);
         let a = h
             .svc
-            .import("/ssh/a".into(), Some("github-work".into()), Some("git.acme.io".into()))
+            .import(
+                "/ssh/a".into(),
+                Some("github-work".into()),
+                Some("git.acme.io".into()),
+            )
             .unwrap();
         let pid = add_profile(&h, "Work");
         h.svc.assign_profile(a.id, Some(pid)).unwrap();
@@ -622,7 +653,10 @@ mod tests {
     fn assign_unknown_profile_errors() {
         let h = harness(vec!["/ssh/a"]);
         let a = h.svc.import("/ssh/a".into(), None, None).unwrap();
-        let err = h.svc.assign_profile(a.id, Some(Uuid::new_v4())).unwrap_err();
+        let err = h
+            .svc
+            .assign_profile(a.id, Some(Uuid::new_v4()))
+            .unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
 

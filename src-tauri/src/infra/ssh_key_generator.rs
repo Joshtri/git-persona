@@ -93,8 +93,8 @@ mod tests {
         assert!(out.fingerprint.starts_with("SHA256:"));
 
         // Written private key is a real OpenSSH key that round-trips.
-        let reread = PrivateKey::read_openssh_file(std::path::Path::new(&out.private_key_path))
-            .unwrap();
+        let reread =
+            PrivateKey::read_openssh_file(std::path::Path::new(&out.private_key_path)).unwrap();
         assert_eq!(reread.algorithm(), Algorithm::Ed25519);
     }
 

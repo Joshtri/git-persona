@@ -1,6 +1,7 @@
 use crate::domain::{
     audit::AuditEntry,
     credential::{Credential, CredentialTxn, Secret, VaultSnapshot},
+    identity_switch::ResolvedRepo,
     profile::Profile,
     repo::{Repo, RepoMetadata, ScanProgress},
     settings::AppSettings,
@@ -8,6 +9,7 @@ use crate::domain::{
 };
 use crate::error::AppError;
 use std::path::Path;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) trait GitConfigBackend: Send + Sync {
@@ -162,4 +164,59 @@ pub(crate) trait ProfileCredentialSync: Send + Sync {
 
     /// Undo a previously returned switch by restoring its snapshots.
     fn rollback(&self, txn: CredentialTxn) -> Result<(), AppError>;
+}
+
+// ---- Smart Identity Switching (Sprint 6) --------------------------------
+
+/// Watches tracked repositories for Git activity (checkout / commit / merge /
+/// reset / rebase / pull) and reports the affected repository so the orchestrator
+/// can react. Kept behind a port so future activation sources (editor or terminal
+/// integrations) can be introduced without touching the orchestration service.
+///
+/// Implementations run on a background thread, must be low-CPU, must debounce and
+/// collapse duplicate events, and must ignore working-tree noise (`node_modules`,
+/// build output, temporary files, and Git object writes).
+pub(crate) trait WorkspaceWatcher: Send + Sync {
+    /// Begin (or replace) watching the given repository roots. `on_activity` is
+    /// invoked with the `git_root` of a repository whose Git state changed.
+    fn start(
+        &self,
+        git_roots: &[String],
+        on_activity: Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Result<(), AppError>;
+    /// Stop watching and release all OS watches. Idempotent.
+    fn stop(&self);
+    /// Suspend reacting to events without releasing the watches.
+    fn pause(&self);
+    /// Resume reacting after a [`pause`](Self::pause).
+    fn resume(&self);
+    fn is_watching(&self) -> bool;
+    fn is_paused(&self) -> bool;
+    fn watched_count(&self) -> usize;
+}
+
+/// Resolves which profile a repository is assigned and enumerates the
+/// repositories eligible for watching. Backed by the repository store.
+pub(crate) trait IdentityResolver: Send + Sync {
+    /// The tracked repository at `git_root`, with its assignment, if any.
+    fn resolve(&self, git_root: &str) -> Result<Option<ResolvedRepo>, AppError>;
+    /// Every tracked repository's `git_root`, for the watcher to monitor.
+    fn watchable_roots(&self) -> Result<Vec<String>, AppError>;
+}
+
+/// Applies a resolved identity by delegating to the existing profile-apply
+/// pipeline (git config → HTTPS credentials → active marker, atomic with
+/// rollback), and reports the currently active profile. The orchestrator never
+/// edits Git or the vault directly — it only drives this port.
+pub(crate) trait IdentitySwitcher: Send + Sync {
+    fn active_profile_id(&self) -> Result<Option<Uuid>, AppError>;
+    fn profile_label(&self, id: Uuid) -> Result<Option<String>, AppError>;
+    fn apply(&self, profile_id: Uuid) -> Result<(), AppError>;
+}
+
+/// Sink for the orchestrator's observable side effects: switch notifications and
+/// status changes the UI listens for.
+pub(crate) trait SwitchObserver: Send + Sync {
+    fn switched(&self, event: &crate::domain::identity_switch::SwitchEvent);
+    fn status_changed(&self, status: &crate::domain::identity_switch::SmartSwitchStatus);
 }

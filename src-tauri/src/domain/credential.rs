@@ -31,12 +31,8 @@ impl Protocol {
 /// Hosts `GitPersona` knows how to manage credentials for. The list is a starting
 /// allow-list, not a hard limit — [`is_supported_host`] is the single check so a
 /// future setting can widen it without touching call sites.
-pub(crate) const SUPPORTED_HOSTS: &[&str] = &[
-    "github.com",
-    "gitlab.com",
-    "bitbucket.org",
-    "dev.azure.com",
-];
+pub(crate) const SUPPORTED_HOSTS: &[&str] =
+    &["github.com", "gitlab.com", "bitbucket.org", "dev.azure.com"];
 
 pub(crate) fn is_supported_host(host: &str) -> bool {
     SUPPORTED_HOSTS.contains(&host)

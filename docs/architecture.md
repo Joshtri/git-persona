@@ -155,3 +155,47 @@ This is the crate's single `unsafe` module (see ADR 004).
 Service means one new `infra/` adapter (using that platform's Git credential-helper
 convention) wired in `state.rs` under a `#[cfg(...)]` — no domain, service, or
 frontend changes.
+
+## Smart Identity Switching (Sprint 6)
+
+An orchestration layer that applies a repository's assigned profile automatically
+when the developer starts working in it. It coordinates existing services only —
+it never edits Git, SSH, or the vault itself (see ADR 005).
+
+### Components
+
+```
+domain/identity_switch.rs   SwitchStatus, SwitchEvent, SmartSwitchStatus, ResolvedRepo
+domain/settings.rs          SmartSwitchingSettings (serde-default, forward compatible)
+domain/ports.rs             WorkspaceWatcher, IdentityResolver, IdentitySwitcher, SwitchObserver
+services/identity_switch_service.rs   IdentitySwitchService (orchestrator)
+                                      + RepoIdentityResolver / ProfileIdentitySwitcher adapters
+infra/git_dir_watcher.rs    notify-debouncer-mini WorkspaceWatcher (native, event-driven)
+infra/switch_observer_tauri.rs   emits `smart-switch` / `smart-switch-status` events
+commands/identity_switch.rs smart_switch_{status,set_enabled,restart,pause,resume,confirm,cancel}
+```
+
+### Detection
+
+The watcher observes each tracked repo's resolved `.git` directory
+**non-recursively**, reacting only to `HEAD` / `ORIG_HEAD` / `MERGE_HEAD` /
+`index` (checkout / commit / merge / reset / rebase / pull). Working-tree edits,
+`.git/objects` churn, `node_modules`, and build output never trigger a switch.
+Events are debounced (400 ms); the watcher is paused/resumed by a flag and
+rebuilt by `reconcile()` on launch, settings change, restart, and post-scan.
+
+### Switching
+
+`IdentitySwitcher` delegates to `ProfileService::apply` — the same atomic saga
+(git config → HTTPS credentials → active marker, with rollback) used for manual
+apply. SSH follows via the managed `~/.ssh/config` block. The orchestrator only
+decides *whether* to switch; it records `identity.auto_switch` /
+`identity.same_profile` / `identity.no_assignment` / `identity.switch_cancelled`
+to the audit log and emits a display-only event (never secrets) to the UI.
+
+### Extension points
+
+`WorkspaceWatcher` is the activation seam — editor/terminal detectors become new
+`infra/` adapters with no orchestrator change. `IdentityResolver` is the rules
+seam — a richer rule engine (out of scope now) slots in behind it. Neither touches
+`IdentitySwitchService`.

@@ -15,6 +15,7 @@ import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
 import { Separator } from "@/components/separator";
 import { Skeleton } from "@/components/skeleton";
+import { SmartIdentityWidget } from "@/features/smart-switch";
 import { cn } from "@/lib/cn";
 // import { Avatar, Badge, Button, Separator, Skeleton } from "@/components/ui";
 import { CREDENTIAL_HOST_VALUES, providerLabel } from "@/lib/credential-hosts";
@@ -51,6 +52,10 @@ function actionLabel(action: string): string {
     "credential.assign": "Assigned credential to profile",
     "credential.switch": "Switched active credential",
     "credential.delete": "Deleted credential",
+    "identity.auto_switch": "Auto-switched identity",
+    "identity.same_profile": "Already on assigned profile",
+    "identity.no_assignment": "Repository has no assigned profile",
+    "identity.switch_cancelled": "Cancelled automatic switch",
   };
   return map[action] ?? action;
 }
@@ -152,6 +157,8 @@ export function DashboardView() {
         </div>
         <Badge variant="success">Git detected</Badge>
       </div>
+
+      <SmartIdentityWidget />
 
       <div className="grid grid-cols-2 gap-4">
         {/* Active Profile */}

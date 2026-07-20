@@ -15,6 +15,14 @@ const defaults: AppSettings = {
   theme: "Dark",
   show_audit_log: true,
   auto_scan_repos: false,
+  smart_switching: {
+    enabled: false,
+    auto_ssh: true,
+    auto_credential: true,
+    show_notification: true,
+    confirm_before_switch: false,
+    start_on_launch: false,
+  },
 };
 
 export const useSettingsStore = create<SettingsStore>((set) => ({

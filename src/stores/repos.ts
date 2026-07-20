@@ -14,6 +14,7 @@ import { type AppError, toAppError } from "@/ipc/errors";
 import type { Repo, ScanProgress } from "@/ipc/types.gen";
 import { useActivityStore } from "@/stores/activity";
 import { useFeedbackStore } from "@/stores/feedback";
+import { useSmartSwitchStore } from "@/stores/smartSwitch";
 
 interface ReposStore {
   items: Repo[];
@@ -70,6 +71,8 @@ export const useReposStore = create<ReposStore>((set, get) => ({
       set({ items, scanning: false, progress: null });
       feedback.toast(`Scan complete — ${items.length} repositories`, "success");
       useActivityStore.getState().fetch();
+      // Newly discovered repositories should join the watch set.
+      useSmartSwitchStore.getState().refreshWatch();
     } catch (e) {
       const err = toAppError(e);
       set({ error: err, scanning: false, progress: null });

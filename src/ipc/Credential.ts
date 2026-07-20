@@ -7,13 +7,4 @@ import type { Protocol } from "./Protocol";
  * Holds **references and metadata only**. The secret lives exclusively in the
  * OS credential vault (Windows Credential Manager) and is never a field here.
  */
-export type Credential = {
-  id: string;
-  profile_id: string | null;
-  host: string;
-  protocol: Protocol;
-  username: string;
-  created_at: string;
-  updated_at: string;
-  last_used: string | null;
-};
+export type Credential = { id: string, profile_id: string | null, host: string, protocol: Protocol, username: string, created_at: string, updated_at: string, last_used: string | null, };

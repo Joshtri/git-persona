@@ -148,15 +148,24 @@ fn verify(target: &str, username: &str) -> Result<(), AppError> {
             if stored == username {
                 Ok(())
             } else {
-                Err(AppError::Credential("credential verification failed".into()))
+                Err(AppError::Credential(
+                    "credential verification failed".into(),
+                ))
             }
         }
-        None => Err(AppError::Credential("credential verification failed".into())),
+        None => Err(AppError::Credential(
+            "credential verification failed".into(),
+        )),
     }
 }
 
 impl CredentialVault for WindowsCredentialVault {
-    fn store(&self, target: &str, username: &str, secret: &Secret) -> Result<VaultSnapshot, AppError> {
+    fn store(
+        &self,
+        target: &str,
+        username: &str,
+        secret: &Secret,
+    ) -> Result<VaultSnapshot, AppError> {
         let prior = capture(target)?;
         let mut blob = utf16le_bytes(secret.as_str());
         let result = write_raw(target, username, &blob);
@@ -174,8 +183,8 @@ impl CredentialVault for WindowsCredentialVault {
     }
 
     fn promote(&self, from: &str, to: &str, username: &str) -> Result<VaultSnapshot, AppError> {
-        let (_, mut blob) = read_raw(from)?
-            .ok_or_else(|| AppError::Credential("backing secret missing".into()))?;
+        let (_, mut blob) =
+            read_raw(from)?.ok_or_else(|| AppError::Credential("backing secret missing".into()))?;
         let prior = capture(to)?;
         let result = write_raw(to, username, &blob);
         blob.zeroize();

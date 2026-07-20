@@ -11,13 +11,16 @@ use crate::error::AppError;
 pub(crate) struct NoopCredentialVault;
 
 fn unsupported() -> AppError {
-    AppError::Unsupported(
-        "credential storage is only available on Windows in this release".into(),
-    )
+    AppError::Unsupported("credential storage is only available on Windows in this release".into())
 }
 
 impl CredentialVault for NoopCredentialVault {
-    fn store(&self, _target: &str, _username: &str, _secret: &Secret) -> Result<VaultSnapshot, AppError> {
+    fn store(
+        &self,
+        _target: &str,
+        _username: &str,
+        _secret: &Secret,
+    ) -> Result<VaultSnapshot, AppError> {
         Err(unsupported())
     }
 

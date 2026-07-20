@@ -1,5 +1,6 @@
 pub(crate) mod activity_service;
 pub(crate) mod credential_service;
+pub(crate) mod identity_switch_service;
 pub(crate) mod profile_service;
 pub(crate) mod repo_service;
 pub(crate) mod settings_service;

@@ -5,6 +5,7 @@ import type {
   Credential,
   Profile,
   Repo,
+  SmartSwitchStatus,
   SshAlgorithm,
   SshKey,
 } from "./types.gen";
@@ -201,4 +202,32 @@ export async function credentialDelete(id: string): Promise<void> {
 
 export async function credentialOpenManager(): Promise<void> {
   return invoke<void>("credential_open_manager");
+}
+
+export async function smartSwitchStatus(): Promise<SmartSwitchStatus> {
+  return invoke<SmartSwitchStatus>("smart_switch_status");
+}
+
+export async function smartSwitchSetEnabled(enabled: boolean): Promise<SmartSwitchStatus> {
+  return invoke<SmartSwitchStatus>("smart_switch_set_enabled", { enabled });
+}
+
+export async function smartSwitchRestart(): Promise<SmartSwitchStatus> {
+  return invoke<SmartSwitchStatus>("smart_switch_restart");
+}
+
+export async function smartSwitchPause(): Promise<SmartSwitchStatus> {
+  return invoke<SmartSwitchStatus>("smart_switch_pause");
+}
+
+export async function smartSwitchResume(): Promise<SmartSwitchStatus> {
+  return invoke<SmartSwitchStatus>("smart_switch_resume");
+}
+
+export async function smartSwitchConfirm(gitRoot: string): Promise<void> {
+  return invoke<void>("smart_switch_confirm", { gitRoot });
+}
+
+export async function smartSwitchCancel(gitRoot: string): Promise<void> {
+  return invoke<void>("smart_switch_cancel", { gitRoot });
 }

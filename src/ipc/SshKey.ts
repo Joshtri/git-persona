@@ -5,18 +5,4 @@ import type { SshAlgorithm } from "./SshAlgorithm";
  * A managed SSH identity. Stores **references and metadata only** — private key
  * bytes are never held here, serialized, or logged.
  */
-export type SshKey = {
-  id: string;
-  label: string;
-  algorithm: SshAlgorithm;
-  fingerprint: string;
-  private_key_path: string;
-  public_key_path: string | null;
-  comment: string | null;
-  assigned_profile_id: string | null;
-  host_alias: string | null;
-  host_name: string | null;
-  created_at: string;
-  imported: boolean;
-  last_used: string | null;
-};
+export type SshKey = { id: string, label: string, algorithm: SshAlgorithm, fingerprint: string, private_key_path: string, public_key_path: string | null, comment: string | null, assigned_profile_id: string | null, host_alias: string | null, host_name: string | null, created_at: string, imported: boolean, last_used: string | null, };

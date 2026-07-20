@@ -42,7 +42,12 @@ impl CredentialService {
         }
     }
 
-    fn log(&self, action: &str, profile_id: Option<Uuid>, host: Option<String>) -> Result<(), AppError> {
+    fn log(
+        &self,
+        action: &str,
+        profile_id: Option<Uuid>,
+        host: Option<String>,
+    ) -> Result<(), AppError> {
         self.audit.append(&AuditEntry {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
@@ -153,7 +158,11 @@ impl CredentialService {
         credential.username = username;
         credential.updated_at = Utc::now();
         self.store.save(&credential)?;
-        self.log("credential.update", credential.profile_id, Some(credential.host.clone()))?;
+        self.log(
+            "credential.update",
+            credential.profile_id,
+            Some(credential.host.clone()),
+        )?;
         Ok(credential)
     }
 
@@ -171,7 +180,11 @@ impl CredentialService {
         credential.profile_id = profile_id;
         credential.updated_at = Utc::now();
         self.store.save(&credential)?;
-        self.log("credential.assign", profile_id, Some(credential.host.clone()))?;
+        self.log(
+            "credential.assign",
+            profile_id,
+            Some(credential.host.clone()),
+        )?;
         Ok(credential)
     }
 
@@ -201,7 +214,11 @@ impl CredentialService {
         self.promote(&credential)?;
         credential.last_used = Some(Utc::now());
         self.store.save(&credential)?;
-        self.log("credential.switch", credential.profile_id, Some(credential.host.clone()))?;
+        self.log(
+            "credential.switch",
+            credential.profile_id,
+            Some(credential.host.clone()),
+        )?;
         Ok(credential)
     }
 
@@ -210,7 +227,8 @@ impl CredentialService {
     fn promote(&self, credential: &Credential) -> Result<VaultSnapshot, AppError> {
         let backing = backing_target(credential.id, &credential.host, credential.protocol);
         let canonical = canonical_target(&credential.host, credential.protocol);
-        self.vault.promote(&backing, &canonical, &credential.username)
+        self.vault
+            .promote(&backing, &canonical, &credential.username)
     }
 }
 
@@ -235,11 +253,13 @@ impl ProfileCredentialSync for CredentialService {
             }
             let mut used = credential.clone();
             used.last_used = Some(Utc::now());
-            if let Err(e) = self
-                .store
-                .save(&used)
-                .and_then(|()| self.log("credential.switch", Some(profile_id), Some(credential.host.clone())))
-            {
+            if let Err(e) = self.store.save(&used).and_then(|()| {
+                self.log(
+                    "credential.switch",
+                    Some(profile_id),
+                    Some(credential.host.clone()),
+                )
+            }) {
                 let _ = self.rollback(CredentialTxn { snapshots });
                 return Err(e);
             }
@@ -289,9 +309,19 @@ mod tests {
             Ok(self.items.lock().unwrap().clone())
         }
         fn find(&self, id: Uuid) -> Result<Option<Credential>, AppError> {
-            Ok(self.items.lock().unwrap().iter().find(|c| c.id == id).cloned())
+            Ok(self
+                .items
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|c| c.id == id)
+                .cloned())
         }
-        fn find_by_host(&self, profile_id: Uuid, host: &str) -> Result<Option<Credential>, AppError> {
+        fn find_by_host(
+            &self,
+            profile_id: Uuid,
+            host: &str,
+        ) -> Result<Option<Credential>, AppError> {
             Ok(self
                 .items
                 .lock()
@@ -329,14 +359,23 @@ mod tests {
             self.slots.lock().unwrap().get(target).cloned()
         }
         fn snapshot_of(&self, target: &str) -> Option<VaultSecret> {
-            self.slots.lock().unwrap().get(target).map(|(u, s)| VaultSecret {
-                username: u.clone(),
-                secret: Zeroizing::new(s.clone()),
-            })
+            self.slots
+                .lock()
+                .unwrap()
+                .get(target)
+                .map(|(u, s)| VaultSecret {
+                    username: u.clone(),
+                    secret: Zeroizing::new(s.clone()),
+                })
         }
     }
     impl CredentialVault for MockVault {
-        fn store(&self, target: &str, username: &str, secret: &Secret) -> Result<VaultSnapshot, AppError> {
+        fn store(
+            &self,
+            target: &str,
+            username: &str,
+            secret: &Secret,
+        ) -> Result<VaultSnapshot, AppError> {
             let prior = self.snapshot_of(target);
             self.slots
                 .lock()
@@ -348,7 +387,12 @@ mod tests {
             })
         }
         fn username(&self, target: &str) -> Result<Option<String>, AppError> {
-            Ok(self.slots.lock().unwrap().get(target).map(|(u, _)| u.clone()))
+            Ok(self
+                .slots
+                .lock()
+                .unwrap()
+                .get(target)
+                .map(|(u, _)| u.clone()))
         }
         fn promote(&self, from: &str, to: &str, username: &str) -> Result<VaultSnapshot, AppError> {
             let secret = self
@@ -387,7 +431,10 @@ mod tests {
             let mut slots = self.slots.lock().unwrap();
             match &snapshot.prior {
                 Some(vs) => {
-                    slots.insert(snapshot.target.clone(), (vs.username.clone(), vs.secret.as_str().into()));
+                    slots.insert(
+                        snapshot.target.clone(),
+                        (vs.username.clone(), vs.secret.as_str().into()),
+                    );
                 }
                 None => {
                     slots.remove(&snapshot.target);
@@ -406,7 +453,13 @@ mod tests {
             Ok(self.profiles.lock().unwrap().clone())
         }
         fn find(&self, id: Uuid) -> Result<Option<Profile>, AppError> {
-            Ok(self.profiles.lock().unwrap().iter().find(|p| p.id == id).cloned())
+            Ok(self
+                .profiles
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|p| p.id == id)
+                .cloned())
         }
         fn save(&self, profile: &Profile) -> Result<(), AppError> {
             self.profiles.lock().unwrap().push(profile.clone());
@@ -458,7 +511,12 @@ mod tests {
         let vault = Arc::new(MockVault::default());
         let profiles = Arc::new(MockProfileStore::default());
         let audit = Arc::new(MockAudit::default());
-        let svc = CredentialService::new(store.clone(), vault.clone(), profiles.clone(), audit.clone());
+        let svc = CredentialService::new(
+            store.clone(),
+            vault.clone(),
+            profiles.clone(),
+            audit.clone(),
+        );
         Harness {
             svc,
             store,
@@ -488,7 +546,11 @@ mod tests {
     }
 
     fn audit_has(h: &Harness, action: &str) -> bool {
-        h.audit.read_all().unwrap().iter().any(|e| e.action == action)
+        h.audit
+            .read_all()
+            .unwrap()
+            .iter()
+            .any(|e| e.action == action)
     }
 
     // ---- tests -----------------------------------------------------------
@@ -515,7 +577,12 @@ mod tests {
         let h = harness();
         let c = h
             .svc
-            .create(None, "github.com", "alice".into(), &secret("super_secret_token"))
+            .create(
+                None,
+                "github.com",
+                "alice".into(),
+                &secret("super_secret_token"),
+            )
             .unwrap();
         let json = serde_json::to_string(&c).unwrap();
         assert!(!json.contains("super_secret_token"));
@@ -596,7 +663,10 @@ mod tests {
             .svc
             .create(None, "github.com", "alice".into(), &secret("t"))
             .unwrap();
-        let err = h.svc.assign_profile(c.id, Some(Uuid::new_v4())).unwrap_err();
+        let err = h
+            .svc
+            .assign_profile(c.id, Some(Uuid::new_v4()))
+            .unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
 
@@ -706,7 +776,10 @@ mod tests {
             .create(Some(pa), "github.com", "alice".into(), &secret("A_tok"))
             .unwrap();
         h.svc.switch_profile(pa).unwrap();
-        assert_eq!(h.vault.get_raw("git:https://github.com").unwrap().1, "A_tok");
+        assert_eq!(
+            h.vault.get_raw("git:https://github.com").unwrap().1,
+            "A_tok"
+        );
 
         // Switch to profile B, then roll back — canonical must return to A.
         let pb = add_profile(&h);
@@ -714,7 +787,10 @@ mod tests {
             .create(Some(pb), "github.com", "bob".into(), &secret("B_tok"))
             .unwrap();
         let txn = h.svc.switch_profile(pb).unwrap();
-        assert_eq!(h.vault.get_raw("git:https://github.com").unwrap().1, "B_tok");
+        assert_eq!(
+            h.vault.get_raw("git:https://github.com").unwrap().1,
+            "B_tok"
+        );
 
         h.svc.rollback(txn).unwrap();
         let restored = h.vault.get_raw("git:https://github.com").unwrap();

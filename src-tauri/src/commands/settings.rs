@@ -11,5 +11,9 @@ pub(crate) async fn settings_set(
     settings: AppSettings,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, AppError> {
-    state.settings.set(settings)
+    let saved = state.settings.set(settings)?;
+    // Keep the workspace watcher in sync with the freshly persisted preferences
+    // (e.g. Smart Switching toggled on/off from the Settings view).
+    state.identity_switch.reconcile()?;
+    Ok(saved)
 }
