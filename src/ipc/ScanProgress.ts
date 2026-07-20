@@ -3,4 +3,4 @@
 /**
  * Progress emitted to the frontend while a scan traverses the filesystem.
  */
-export type ScanProgress = { scanned_dirs: number, found_repos: number, };
+export type ScanProgress = { scanned_dirs: number; found_repos: number };

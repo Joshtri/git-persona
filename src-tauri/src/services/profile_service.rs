@@ -1,7 +1,7 @@
 use crate::domain::{
     audit::AuditEntry,
     identity::Identity,
-    ports::{AuditSink, GitConfigBackend, ProfileStore, RepoStore},
+    ports::{AuditSink, GitConfigBackend, ProfileCredentialSync, ProfileStore, RepoStore},
     profile::Profile,
 };
 use crate::error::AppError;
@@ -9,10 +9,18 @@ use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// The git identity captured before an apply, used to roll back stage 1.
+struct GitSnapshot {
+    name: Option<String>,
+    email: Option<String>,
+    signing_key: Option<String>,
+}
+
 pub(crate) struct ProfileService {
     store: Arc<dyn ProfileStore>,
     repos: Arc<dyn RepoStore>,
     git_config: Arc<dyn GitConfigBackend>,
+    credentials: Arc<dyn ProfileCredentialSync>,
     audit: Arc<dyn AuditSink>,
 }
 
@@ -21,12 +29,14 @@ impl ProfileService {
         store: Arc<dyn ProfileStore>,
         repos: Arc<dyn RepoStore>,
         git_config: Arc<dyn GitConfigBackend>,
+        credentials: Arc<dyn ProfileCredentialSync>,
         audit: Arc<dyn AuditSink>,
     ) -> Self {
         Self {
             store,
             repos,
             git_config,
+            credentials,
             audit,
         }
     }
@@ -138,13 +148,43 @@ impl ProfileService {
         Ok(())
     }
 
+    /// Apply a profile as one multi-stage identity switch — git config, then
+    /// HTTPS credentials, then active marker — rolling back completed stages if a
+    /// later one fails so the machine never lands in a half-switched state.
     pub(crate) fn apply(&self, id: Uuid) -> Result<(), AppError> {
         let profile = self.find(id)?;
-        self.git_config.set_global_name(&profile.identity.name)?;
-        self.git_config.set_global_email(&profile.identity.email)?;
-        self.git_config
-            .set_global_signing_key(profile.identity.signing_key.as_deref())?;
-        self.store.set_active_id(Some(id))?;
+
+        // Snapshot everything a later failure must undo.
+        let git_before = GitSnapshot {
+            name: self.git_config.get_global_name()?,
+            email: self.git_config.get_global_email()?,
+            signing_key: self.git_config.get_global_signing_key()?,
+        };
+        let active_before = self.store.get_active_id()?;
+
+        // Stage 1 — git config.
+        if let Err(e) = self.apply_git_config(&profile.identity) {
+            self.restore_git_config(&git_before);
+            return Err(e);
+        }
+
+        // Stage 2 — HTTPS credentials (empty/no-op when the profile has none).
+        let credential_txn = match self.credentials.switch_profile(id) {
+            Ok(txn) => txn,
+            Err(e) => {
+                self.restore_git_config(&git_before);
+                return Err(e);
+            }
+        };
+
+        // Stage 3 — mark active.
+        if let Err(e) = self.store.set_active_id(Some(id)) {
+            let _ = self.credentials.rollback(credential_txn);
+            self.restore_git_config(&git_before);
+            let _ = self.store.set_active_id(active_before);
+            return Err(e);
+        }
+
         self.audit.append(&AuditEntry {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
@@ -153,6 +193,28 @@ impl ProfileService {
             repo_path: None,
         })?;
         Ok(())
+    }
+
+    fn apply_git_config(&self, identity: &Identity) -> Result<(), AppError> {
+        self.git_config.set_global_name(&identity.name)?;
+        self.git_config.set_global_email(&identity.email)?;
+        self.git_config
+            .set_global_signing_key(identity.signing_key.as_deref())?;
+        Ok(())
+    }
+
+    /// Best-effort restore of the pre-apply git identity. Values that were unset
+    /// before cannot be cleared here, so only present values are rewritten.
+    fn restore_git_config(&self, before: &GitSnapshot) {
+        if let Some(name) = &before.name {
+            let _ = self.git_config.set_global_name(name);
+        }
+        if let Some(email) = &before.email {
+            let _ = self.git_config.set_global_email(email);
+        }
+        let _ = self
+            .git_config
+            .set_global_signing_key(before.signing_key.as_deref());
     }
 
     pub(crate) fn get_active(&self) -> Result<Option<Profile>, AppError> {
@@ -173,7 +235,10 @@ impl ProfileService {
 )]
 mod tests {
     use super::*;
-    use crate::domain::{audit::AuditEntry, ports::AuditSink, repo::Repo, settings::AppSettings};
+    use crate::domain::{
+        audit::AuditEntry, credential::CredentialTxn, ports::AuditSink, repo::Repo,
+        settings::AppSettings,
+    };
     use chrono::Utc;
     use std::sync::Mutex;
 
@@ -268,8 +333,28 @@ mod tests {
             *self.email.lock().unwrap() = Some(email.into());
             Ok(())
         }
+        fn get_global_signing_key(&self) -> Result<Option<String>, AppError> {
+            Ok(self.signing_key.lock().unwrap().clone())
+        }
         fn set_global_signing_key(&self, key: Option<&str>) -> Result<(), AppError> {
             *self.signing_key.lock().unwrap() = key.map(Into::into);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockCredentialSync {
+        switched: Mutex<Vec<Uuid>>,
+        rolled_back: Mutex<u32>,
+    }
+
+    impl ProfileCredentialSync for MockCredentialSync {
+        fn switch_profile(&self, profile_id: Uuid) -> Result<CredentialTxn, AppError> {
+            self.switched.lock().unwrap().push(profile_id);
+            Ok(CredentialTxn { snapshots: vec![] })
+        }
+        fn rollback(&self, _txn: CredentialTxn) -> Result<(), AppError> {
+            *self.rolled_back.lock().unwrap() += 1;
             Ok(())
         }
     }
@@ -348,9 +433,26 @@ mod tests {
                 repos: Mutex::new(repos),
             }),
             git_config.clone(),
+            Arc::new(MockCredentialSync::default()),
             audit.clone(),
         );
         (svc, git_config, audit)
+    }
+
+    fn make_service_with_credentials(
+        credentials: Arc<MockCredentialSync>,
+    ) -> (ProfileService, Arc<MockGitConfig>) {
+        let git_config = Arc::new(MockGitConfig::new());
+        let svc = ProfileService::new(
+            Arc::new(MockStore::new(vec![])),
+            Arc::new(MockRepoStore {
+                repos: Mutex::new(vec![]),
+            }),
+            git_config.clone(),
+            credentials,
+            Arc::new(MockAudit::new()),
+        );
+        (svc, git_config)
     }
 
     fn repo_assigned_to(profile_id: Uuid) -> Repo {
@@ -447,6 +549,17 @@ mod tests {
         assert_eq!(*git.email.lock().unwrap(), Some("work@example.com".into()));
         assert_eq!(*git.name.lock().unwrap(), Some("Test User".into()));
         assert_eq!(svc.get_active().unwrap().unwrap().id, p.id);
+    }
+
+    #[test]
+    fn apply_switches_credentials_for_profile() {
+        let credentials = Arc::new(MockCredentialSync::default());
+        let (svc, _git) = make_service_with_credentials(credentials.clone());
+        let p = svc
+            .create("Work".into(), identity("work@example.com"), None)
+            .unwrap();
+        svc.apply(p.id).unwrap();
+        assert_eq!(credentials.switched.lock().unwrap().as_slice(), &[p.id]);
     }
 
     #[test]

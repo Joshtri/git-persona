@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CREDENTIAL_HOST_VALUES } from "@/lib/credential-hosts";
 
 export const identitySchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -37,3 +38,20 @@ export const sshGenerateSchema = z.object({
 
 export type SshImportFormData = z.infer<typeof sshImportSchema>;
 export type SshGenerateFormData = z.infer<typeof sshGenerateSchema>;
+
+export const credentialSchema = z.object({
+  host: z.enum(CREDENTIAL_HOST_VALUES, { message: "Choose a supported host" }),
+  username: z.string().min(1, "Username is required").max(100),
+  token: z.string().min(1, "Token is required").max(500),
+  // "" means unassigned; any other value is a profile id.
+  profileId: z.string().optional(),
+});
+
+export const credentialEditSchema = z.object({
+  username: z.string().min(1, "Username is required").max(100),
+  // Optional rotation — leave blank to keep the existing token.
+  token: z.string().max(500).optional(),
+});
+
+export type CredentialFormData = z.infer<typeof credentialSchema>;
+export type CredentialEditFormData = z.infer<typeof credentialEditSchema>;

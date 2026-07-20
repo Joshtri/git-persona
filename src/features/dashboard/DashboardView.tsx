@@ -1,4 +1,3 @@
-import { Popover } from "@base-ui/react/popover";
 import {
   ArrowRightFromSquare,
   BranchesDown,
@@ -14,12 +13,13 @@ import { useEffect } from "react";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
-import styles from "@/components/pop-over/index.module.css";
 import { Separator } from "@/components/separator";
 import { Skeleton } from "@/components/skeleton";
-// import { Avatar, Badge, Button, Separator, Skeleton } from "@/components/ui";
 import { cn } from "@/lib/cn";
+// import { Avatar, Badge, Button, Separator, Skeleton } from "@/components/ui";
+import { CREDENTIAL_HOST_VALUES, providerLabel } from "@/lib/credential-hosts";
 import { useActivityStore } from "@/stores/activity";
+import { useCredentialsStore } from "@/stores/credentials";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
 import { useSshStore } from "@/stores/ssh";
@@ -46,6 +46,11 @@ function actionLabel(action: string): string {
     "ssh.assign": "Assigned SSH key to profile",
     "ssh.remove": "Removed SSH key",
     "ssh.config.updated": "Updated SSH config",
+    "credential.create": "Created credential",
+    "credential.update": "Updated credential",
+    "credential.assign": "Assigned credential to profile",
+    "credential.switch": "Switched active credential",
+    "credential.delete": "Deleted credential",
   };
   return map[action] ?? action;
 }
@@ -94,10 +99,12 @@ export function DashboardView() {
   const { items: activity } = useActivityStore();
   const { items: repos } = useReposStore();
   const { items: sshKeys, fetch: fetchSsh } = useSshStore();
+  const { items: credentials, fetch: fetchCredentials } = useCredentialsStore();
 
   useEffect(() => {
     fetchSsh();
-  }, [fetchSsh]);
+    fetchCredentials();
+  }, [fetchSsh, fetchCredentials]);
 
   const recentRepos = [...repos]
     .sort((a, b) => b.detected_at.localeCompare(a.detected_at))
@@ -112,6 +119,14 @@ export function DashboardView() {
   const activeSshKey = activeProfileId
     ? (sshKeys.find((k) => k.assigned_profile_id === activeProfileId) ?? null)
     : null;
+
+  const credAssigned = credentials.filter((c) => c.profile_id != null).length;
+  const credUnassigned = credentials.length - credAssigned;
+  const credByProvider = CREDENTIAL_HOST_VALUES.map((host) => ({
+    host,
+    label: providerLabel(host),
+    count: credentials.filter((c) => c.host === host).length,
+  })).filter((p) => p.count > 0);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
 
@@ -291,6 +306,48 @@ export function DashboardView() {
             <Badge variant="default" className="text-[10px] shrink-0">
               Recent: {sshRecentImport.label}
             </Badge>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* HTTPS Credentials */}
+      <SectionCard>
+        <CardHeader
+          title="HTTPS Credentials"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate({ name: "credentials" })}>
+              Manage
+            </Button>
+          }
+        />
+        <div className="grid grid-cols-3 gap-px bg-(--color-border)">
+          {[
+            { label: "Total", value: credentials.length },
+            { label: "Assigned", value: credAssigned },
+            { label: "Unassigned", value: credUnassigned },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="flex flex-col gap-0.5 p-3.5 bg-(--color-surface) items-center"
+            >
+              <span className="text-lg font-semibold text-(--color-fg)">{stat.value}</span>
+              <span className="text-[10px] uppercase tracking-wider text-(--color-muted)">
+                {stat.label}
+              </span>
+            </div>
+          ))}
+        </div>
+        <Separator />
+        <div className="px-4 py-3 flex items-center gap-2 flex-wrap min-h-11">
+          <span className="text-xs text-(--color-secondary) shrink-0">By provider</span>
+          {credByProvider.length === 0 ? (
+            <span className="text-xs text-(--color-muted)">No credentials yet</span>
+          ) : (
+            credByProvider.map((p) => (
+              <Badge key={p.host} variant="default" className="text-[10px]">
+                {p.label} · {p.count}
+              </Badge>
+            ))
           )}
         </div>
       </SectionCard>

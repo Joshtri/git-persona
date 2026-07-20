@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, AuditEntry, Profile, Repo, SshAlgorithm, SshKey } from "./types.gen";
+import type {
+  AppSettings,
+  AuditEntry,
+  Credential,
+  Profile,
+  Repo,
+  SshAlgorithm,
+  SshKey,
+} from "./types.gen";
 
 export async function settingsGet(): Promise<AppSettings> {
   return invoke<AppSettings>("settings_get");
@@ -153,4 +161,44 @@ export async function sshConfigOpen(): Promise<void> {
 
 export async function sshConfigPreview(): Promise<string> {
   return invoke<string>("ssh_config_preview");
+}
+
+export async function credentialList(): Promise<Credential[]> {
+  return invoke<Credential[]>("credential_list");
+}
+
+export async function credentialCreate(
+  profileId: string | null,
+  host: string,
+  username: string,
+  token: string
+): Promise<Credential> {
+  return invoke<Credential>("credential_create", { profileId, host, username, token });
+}
+
+export async function credentialUpdate(
+  id: string,
+  username: string,
+  token: string | null
+): Promise<Credential> {
+  return invoke<Credential>("credential_update", { id, username, token });
+}
+
+export async function credentialAssignProfile(
+  id: string,
+  profileId: string | null
+): Promise<Credential> {
+  return invoke<Credential>("credential_assign_profile", { id, profileId });
+}
+
+export async function credentialSwitch(id: string): Promise<Credential> {
+  return invoke<Credential>("credential_switch", { id });
+}
+
+export async function credentialDelete(id: string): Promise<void> {
+  return invoke<void>("credential_delete", { id });
+}
+
+export async function credentialOpenManager(): Promise<void> {
+  return invoke<void>("credential_open_manager");
 }

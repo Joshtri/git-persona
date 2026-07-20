@@ -1,5 +1,6 @@
 use crate::domain::{
     audit::AuditEntry,
+    credential::{Credential, CredentialTxn, Secret, VaultSnapshot},
     profile::Profile,
     repo::{Repo, RepoMetadata, ScanProgress},
     settings::AppSettings,
@@ -10,10 +11,9 @@ use std::path::Path;
 use uuid::Uuid;
 
 pub(crate) trait GitConfigBackend: Send + Sync {
-    #[allow(dead_code)]
     fn get_global_name(&self) -> Result<Option<String>, AppError>;
-    #[allow(dead_code)]
     fn get_global_email(&self) -> Result<Option<String>, AppError>;
+    fn get_global_signing_key(&self) -> Result<Option<String>, AppError>;
     fn set_global_name(&self, name: &str) -> Result<(), AppError>;
     fn set_global_email(&self, email: &str) -> Result<(), AppError>;
     fn set_global_signing_key(&self, key: Option<&str>) -> Result<(), AppError>;
@@ -101,4 +101,65 @@ pub(crate) trait SshConfigWriter: Send + Sync {
     fn write_managed_block(&self, entries: &[SshConfigEntry]) -> Result<(), AppError>;
     /// Read the raw config contents for preview (empty string if absent).
     fn read_raw(&self) -> Result<String, AppError>;
+}
+
+/// Persistence for [`Credential`] **metadata** — never secrets. Mirrors the
+/// other Tauri-store adapters; the store file holds no token material.
+pub(crate) trait CredentialStore: Send + Sync {
+    fn load_all(&self) -> Result<Vec<Credential>, AppError>;
+    fn find(&self, id: Uuid) -> Result<Option<Credential>, AppError>;
+    /// The credential a profile owns for a host, if any (enforces one-per-host).
+    fn find_by_host(&self, profile_id: Uuid, host: &str) -> Result<Option<Credential>, AppError>;
+    fn save(&self, credential: &Credential) -> Result<(), AppError>;
+    fn delete(&self, id: Uuid) -> Result<(), AppError>;
+}
+
+/// The OS secure credential storage (Windows Credential Manager today; macOS
+/// Keychain / Linux Secret Service later). The **only** place secrets live.
+///
+/// Every operation is keyed by an opaque `target` string built by the service.
+/// The canonical, Git-readable target is `git:<scheme>://<host>`; per-credential
+/// backing secrets are parked under a `gitpersona:<id>:<scheme>://<host>` target.
+/// The vault must touch **only** those targets — it never enumerates or modifies
+/// unrelated OS credentials.
+pub(crate) trait CredentialVault: Send + Sync {
+    /// Upsert `target` with `username`/`secret`, verify by reading it back, and
+    /// return the prior slot contents so a failed switch can be rolled back.
+    fn store(
+        &self,
+        target: &str,
+        username: &str,
+        secret: &Secret,
+    ) -> Result<VaultSnapshot, AppError>;
+
+    /// The username currently stored at `target`, or `None`. Never the secret.
+    /// Used by the frontend phase to surface the active credential per host.
+    #[allow(dead_code)]
+    fn username(&self, target: &str) -> Result<Option<String>, AppError>;
+
+    /// Copy the secret at `from` into `to` under `username`, keeping the secret
+    /// inside the vault. Used to promote a profile's backing credential onto the
+    /// canonical Git target. Returns `to`'s prior contents for rollback.
+    fn promote(&self, from: &str, to: &str, username: &str) -> Result<VaultSnapshot, AppError>;
+
+    /// Delete `target`. `Ok` even if it was already absent. Returns the prior
+    /// slot contents for rollback.
+    fn delete(&self, target: &str) -> Result<VaultSnapshot, AppError>;
+
+    /// Restore a previously captured slot: rewrite it if the snapshot held a
+    /// secret, otherwise delete it.
+    fn restore(&self, snapshot: &VaultSnapshot) -> Result<(), AppError>;
+}
+
+/// Narrow port the profile-apply pipeline uses to switch a profile's HTTPS
+/// credentials as one stage, with rollback. Implemented by the credential
+/// service; keeps all vault access inside that service.
+pub(crate) trait ProfileCredentialSync: Send + Sync {
+    /// Promote every credential owned by `profile_id` onto its canonical Git
+    /// target. Returns a transaction handle carrying rollback snapshots. A
+    /// profile with no credentials yields an empty, successful transaction.
+    fn switch_profile(&self, profile_id: Uuid) -> Result<CredentialTxn, AppError>;
+
+    /// Undo a previously returned switch by restoring its snapshots.
+    fn rollback(&self, txn: CredentialTxn) -> Result<(), AppError>;
 }

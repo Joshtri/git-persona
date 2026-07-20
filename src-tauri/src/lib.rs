@@ -10,6 +10,10 @@ use tauri::Manager;
 
 use commands::{
     activity::activity_list,
+    credentials::{
+        credential_assign_profile, credential_create, credential_delete, credential_list,
+        credential_open_manager, credential_switch, credential_update,
+    },
     profiles::{
         profile_apply, profile_create, profile_delete, profile_get_active, profile_list,
         profile_update,
@@ -68,6 +72,13 @@ pub fn run() {
             ssh_reveal_folder,
             ssh_config_open,
             ssh_config_preview,
+            credential_list,
+            credential_create,
+            credential_update,
+            credential_assign_profile,
+            credential_switch,
+            credential_delete,
+            credential_open_manager,
         ])
         .run(tauri::generate_context!())
         .expect("fatal: error while running tauri application");
@@ -78,6 +89,7 @@ pub fn run() {
 mod export_bindings {
     use crate::domain::{
         audit::AuditEntry,
+        credential::{Credential, Protocol},
         identity::Identity,
         profile::Profile,
         repo::{Repo, ScanProgress},
@@ -97,5 +109,7 @@ mod export_bindings {
         Theme::export_all_to("../src/ipc/").unwrap();
         SshKey::export_all_to("../src/ipc/").unwrap();
         SshAlgorithm::export_all_to("../src/ipc/").unwrap();
+        Credential::export_all_to("../src/ipc/").unwrap();
+        Protocol::export_all_to("../src/ipc/").unwrap();
     }
 }

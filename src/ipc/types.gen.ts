@@ -64,3 +64,16 @@ export interface SshKey {
   imported: boolean;
   last_used: string | null;
 }
+
+export type Protocol = "Https";
+
+export interface Credential {
+  id: string;
+  profile_id: string | null;
+  host: string;
+  protocol: Protocol;
+  username: string;
+  created_at: string;
+  updated_at: string;
+  last_used: string | null;
+}

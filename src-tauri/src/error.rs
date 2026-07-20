@@ -18,6 +18,12 @@ pub(crate) enum AppError {
     #[error("crypto error: {0}")]
     Crypto(String),
     #[allow(dead_code)]
+    #[error("credential error: {0}")]
+    Credential(String),
+    #[allow(dead_code)]
+    #[error("unsupported: {0}")]
+    Unsupported(String),
+    #[allow(dead_code)]
     #[error("undo unavailable")]
     UndoUnavailable,
     #[allow(dead_code)]
@@ -37,6 +43,8 @@ impl AppError {
             Self::Io(_) => "IO",
             Self::Conflict(_) => "CONFLICT",
             Self::Crypto(_) => "CRYPTO",
+            Self::Credential(_) => "CREDENTIAL",
+            Self::Unsupported(_) => "UNSUPPORTED",
             Self::UndoUnavailable => "UNDO_UNAVAILABLE",
             Self::NotImplemented => "NOT_IMPLEMENTED",
             Self::Internal(_) => "INTERNAL",
