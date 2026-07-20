@@ -20,7 +20,6 @@ fn open(path: &std::path::Path) -> Result<File<'static>, AppError> {
     }
 }
 
-#[allow(dead_code)]
 fn get_value(section: &str, key: &str) -> Result<Option<String>, AppError> {
     let path = home_gitconfig()?;
     match open(&path) {
@@ -66,6 +65,10 @@ impl GitConfigBackend for GixGitConfig {
 
     fn get_global_email(&self) -> Result<Option<String>, AppError> {
         get_value("user", "email")
+    }
+
+    fn get_global_signing_key(&self) -> Result<Option<String>, AppError> {
+        get_value("user", "signingkey")
     }
 
     fn set_global_name(&self, name: &str) -> Result<(), AppError> {

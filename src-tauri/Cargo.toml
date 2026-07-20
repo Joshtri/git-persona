@@ -29,9 +29,18 @@ walkdir     = "2"
 tokio       = { version = "1", features = ["sync"] }
 ssh-key     = { version = "0.6", features = ["std", "alloc", "ed25519", "rsa"] }
 rand_core   = { version = "0.6", features = ["getrandom"] }
+zeroize     = "1"
 tauri-plugin-store  = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+
+# Windows Credential Manager access (native Win32 CredRead/Write/Delete). Only
+# compiled on Windows; other platforms use the no-op vault fallback.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security_Credentials",
+] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -48,8 +57,11 @@ indexing_slicing        = "warn"
 pedantic                = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 
+# `deny` (not `forbid`) so the single Windows Credential Manager FFI adapter can
+# carry a scoped, audited `#![allow(unsafe_code)]`. Unsafe is denied everywhere
+# else in the crate.
 [lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [profile.release]
 lto           = true

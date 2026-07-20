@@ -127,37 +127,6 @@ export const MOCK_SSH_KEYS: MockSshKey[] = [
   },
 ];
 
-export interface MockCredential {
-  id: string;
-  name: string;
-  host: string;
-  username: string;
-  type: "HTTPS" | "Token";
-  created: string;
-  profile_id?: string;
-}
-
-export const MOCK_CREDENTIALS: MockCredential[] = [
-  {
-    id: "c1",
-    name: "GitHub (Work)",
-    host: "github.com",
-    username: "alex-work",
-    type: "Token",
-    created: "2024-02-01",
-    profile_id: "p1",
-  },
-  {
-    id: "c2",
-    name: "GitLab",
-    host: "gitlab.com",
-    username: "achenblog",
-    type: "Token",
-    created: "2023-12-10",
-    profile_id: "p3",
-  },
-];
-
 export function getProfileById(id: string): Profile | undefined {
   return MOCK_PROFILES.find((p) => p.id === id);
 }

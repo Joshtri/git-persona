@@ -18,7 +18,7 @@ export function Input({ error, className, ...props }: Props) {
         error
           ? "border-(--color-danger) focus:border-(--color-danger)"
           : "border-(--color-border) focus:border-(--color-brand-500)",
-        className
+        className,
       )}
       {...props}
     />

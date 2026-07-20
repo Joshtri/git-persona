@@ -1,6 +1,7 @@
 import { Separator } from "@base-ui/react";
 import {
   ArrowRightFromSquare,
+  ArrowRotateLeft,
   CircleInfo,
   FileArrowUp,
   FileText,
@@ -14,12 +15,14 @@ import {
   Magnifier,
   Person,
   Plus,
+  TrashBin,
   Xmark,
 } from "@gravity-ui/icons";
 import type { ComponentType, SVGAttributes } from "react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Kbd } from "@/components/kbd";
 import { cn } from "@/lib/cn";
+import { useCredentialsStore } from "@/stores/credentials";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
 import { useSshStore } from "@/stores/ssh";
@@ -45,6 +48,11 @@ export function CommandPalette() {
     revealFolder: revealSshFolder,
     openConfig: openSshConfig,
   } = useSshStore();
+  const {
+    setCreateOpen: setCredentialCreateOpen,
+    fetch: fetchCredentials,
+    openManager: openCredentialManager,
+  } = useCredentialsStore();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -197,12 +205,60 @@ export function CommandPalette() {
     },
   ];
 
+  const credentialCommands: Command[] = [
+    {
+      id: "credential-create",
+      group: "Credentials",
+      label: "Create Credential",
+      Icon: Plus,
+      action: () => {
+        navigate({ name: "credentials" });
+        setCredentialCreateOpen(true);
+      },
+    },
+    {
+      id: "credential-assign",
+      group: "Credentials",
+      label: "Assign Credential",
+      Icon: Lock,
+      action: () => navigate({ name: "credentials" }),
+    },
+    {
+      id: "credential-delete",
+      group: "Credentials",
+      label: "Delete Credential",
+      Icon: TrashBin,
+      action: () => navigate({ name: "credentials" }),
+    },
+    {
+      id: "credential-refresh",
+      group: "Credentials",
+      label: "Refresh Credentials",
+      Icon: ArrowRotateLeft,
+      action: () => {
+        navigate({ name: "credentials" });
+        fetchCredentials();
+      },
+    },
+    {
+      id: "credential-open-manager",
+      group: "Credentials",
+      label: "Open Windows Credential Manager",
+      Icon: Key,
+      action: () => {
+        openCredentialManager();
+        closePalette();
+      },
+    },
+  ];
+
   const ALL_COMMANDS: Command[] = [
     ...navCommands,
     ...profileCommands,
     ...repoActionCommands,
     ...repoCommands,
     ...sshCommands,
+    ...credentialCommands,
   ];
 
   const filtered = ALL_COMMANDS.filter(
