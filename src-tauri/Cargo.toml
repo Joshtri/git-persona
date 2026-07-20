@@ -1,0 +1,71 @@
+[package]
+name = "gitswitch-desktop"
+version = "0.1.0"
+description = "GitPersona — Developer Identity Manager"
+authors = []
+edition = "2021"
+
+[lib]
+# The `_lib` suffix avoids a name collision with the bin on Windows.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "gitswitch_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri       = { version = "2", features = [] }
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+thiserror   = "2"
+ts-rs       = { version = "11", features = ["serde-compat", "uuid-impl", "chrono-impl"] }
+uuid        = { version = "1", features = ["v4", "serde"] }
+chrono      = { version = "0.4", features = ["serde", "clock"], default-features = false }
+gix-config  = "0.45"
+dirs-next   = "2"
+sha2        = "0.10"
+walkdir     = "2"
+tokio       = { version = "1", features = ["sync"] }
+ssh-key     = { version = "0.6", features = ["std", "alloc", "ed25519", "rsa"] }
+rand_core   = { version = "0.6", features = ["getrandom"] }
+tauri-plugin-store  = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+[dev-dependencies]
+tempfile = "3"
+rand_chacha = "0.3"
+
+[lints.clippy]
+unwrap_used             = "deny"
+expect_used             = "deny"
+panic                   = "deny"
+todo                    = "deny"
+unimplemented           = "deny"
+unwrap_in_result        = "deny"
+indexing_slicing        = "warn"
+pedantic                = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto           = true
+codegen-units = 1
+strip         = true
+panic         = "abort"
+
+# RSA-4096 key generation is unusably slow (minutes) when the bignum crates are
+# built unoptimized, which freezes the app in dev/debug builds. Compile just the
+# crypto math with optimizations so keygen stays fast without penalizing the rest
+# of the debug build. Applies to `cargo test`/`tauri dev` (dev-derived profiles).
+[profile.dev.package.rsa]
+opt-level = 3
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+[profile.dev.package.num-integer]
+opt-level = 3
+[profile.dev.package.num-traits]
+opt-level = 3
