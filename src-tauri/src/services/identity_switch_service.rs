@@ -2,9 +2,10 @@ use crate::domain::{
     audit::AuditEntry,
     identity_switch::{ResolvedRepo, SmartSwitchStatus, SwitchEvent, SwitchStatus},
     ports::{
-        AuditSink, IdentityResolver, IdentitySwitcher, ProfileStore, RepoStore, SwitchObserver,
-        WorkspaceWatcher,
+        AuditSink, IdentityResolver, IdentitySwitcher, ProfileStore, RepoStore, RuleResolver,
+        SwitchObserver, WorkspaceWatcher,
     },
+    rule::EvaluationContext,
     settings::SmartSwitchingSettings,
 };
 use crate::error::AppError;
@@ -40,6 +41,7 @@ impl IdentityResolver for RepoIdentityResolver {
                 repo_id: r.id,
                 repo_name: r.name,
                 profile_id: r.active_profile_id,
+                remote_origin: r.remote_origin,
             }))
     }
 
@@ -92,6 +94,7 @@ pub(crate) struct IdentitySwitchService {
     watcher: Arc<dyn WorkspaceWatcher>,
     observer: Arc<dyn SwitchObserver>,
     settings: Arc<dyn ProfileStore>,
+    rules: Arc<dyn RuleResolver>,
     audit: Arc<dyn AuditSink>,
     started_at: Mutex<Option<DateTime<Utc>>>,
     last_switch: Mutex<Option<SwitchEvent>>,
@@ -104,6 +107,7 @@ impl IdentitySwitchService {
         watcher: Arc<dyn WorkspaceWatcher>,
         observer: Arc<dyn SwitchObserver>,
         settings: Arc<dyn ProfileStore>,
+        rules: Arc<dyn RuleResolver>,
         audit: Arc<dyn AuditSink>,
     ) -> Self {
         Self {
@@ -112,10 +116,33 @@ impl IdentitySwitchService {
             watcher,
             observer,
             settings,
+            rules,
             audit,
             started_at: Mutex::new(None),
             last_switch: Mutex::new(None),
         }
+    }
+
+    /// Resolve the profile a repository should use: the Rule Engine decides
+    /// first (highest-priority match wins), falling back to the manual
+    /// repository assignment when no rule matches. Records `rule.matched` when a
+    /// rule drives the decision. Returns `None` only when neither a rule nor a
+    /// manual assignment applies.
+    fn resolve_profile(
+        &self,
+        resolved: &ResolvedRepo,
+        git_root: &str,
+    ) -> Result<Option<Uuid>, AppError> {
+        let ctx = EvaluationContext::from_parts(
+            git_root,
+            &resolved.repo_name,
+            resolved.remote_origin.as_deref(),
+        );
+        if let Some(m) = self.rules.resolve(&ctx)? {
+            self.record("rule.matched", Some(m.profile_id), git_root)?;
+            return Ok(Some(m.profile_id));
+        }
+        Ok(resolved.profile_id)
     }
 
     fn config(&self) -> Result<SmartSwitchingSettings, AppError> {
@@ -197,8 +224,8 @@ impl IdentitySwitchService {
             .resolver
             .resolve(git_root)?
             .ok_or_else(|| AppError::NotFound(format!("repository {git_root}")))?;
-        let profile_id = resolved
-            .profile_id
+        let profile_id = self
+            .resolve_profile(&resolved, git_root)?
             .ok_or_else(|| AppError::Validation("repository has no assigned profile".into()))?;
         self.apply_switch(&resolved, profile_id, git_root)
     }
@@ -224,7 +251,7 @@ impl IdentitySwitchService {
             // Not a tracked repository — nothing to do.
             return Ok(());
         };
-        let Some(profile_id) = resolved.profile_id else {
+        let Some(profile_id) = self.resolve_profile(&resolved, git_root)? else {
             self.record("identity.no_assignment", None, git_root)?;
             self.emit_switch(SwitchStatus::NoAssignment, &resolved, None, git_root)?;
             return Ok(());
@@ -330,7 +357,7 @@ impl IdentitySwitchService {
 )]
 mod tests {
     use super::*;
-    use crate::domain::{profile::Profile, settings::AppSettings};
+    use crate::domain::{profile::Profile, rule::RuleMatch, settings::AppSettings};
 
     // ---- mock ports ------------------------------------------------------
 
@@ -347,6 +374,7 @@ mod tests {
                     repo_id,
                     repo_name: name.into(),
                     profile_id,
+                    remote_origin: None,
                 },
             ));
             self.roots.lock().unwrap().push(git_root.into());
@@ -364,6 +392,7 @@ mod tests {
                     repo_id: v.repo_id,
                     repo_name: v.repo_name.clone(),
                     profile_id: v.profile_id,
+                    remote_origin: v.remote_origin.clone(),
                 }))
         }
         fn watchable_roots(&self) -> Result<Vec<String>, AppError> {
@@ -437,6 +466,24 @@ mod tests {
         }
     }
 
+    /// When `forced` is set, every resolution returns that profile (simulating a
+    /// matching rule). Otherwise it matches nothing, so the manual assignment
+    /// stands — the backward-compatible path.
+    #[derive(Default)]
+    struct MockRuleResolver {
+        forced: Mutex<Option<Uuid>>,
+    }
+    impl RuleResolver for MockRuleResolver {
+        fn resolve(&self, _ctx: &EvaluationContext) -> Result<Option<RuleMatch>, AppError> {
+            Ok(self.forced.lock().unwrap().map(|profile_id| RuleMatch {
+                rule_id: Uuid::new_v4(),
+                rule_name: "forced".into(),
+                profile_id,
+                reason: "test".into(),
+            }))
+        }
+    }
+
     #[derive(Default)]
     struct MockObserver {
         events: Mutex<Vec<SwitchEvent>>,
@@ -504,6 +551,7 @@ mod tests {
         switcher: Arc<MockSwitcher>,
         watcher: Arc<MockWatcher>,
         observer: Arc<MockObserver>,
+        rules: Arc<MockRuleResolver>,
         audit: Arc<MockAudit>,
     }
 
@@ -512,6 +560,7 @@ mod tests {
         let switcher = Arc::new(MockSwitcher::default());
         let watcher = Arc::new(MockWatcher::default());
         let observer = Arc::new(MockObserver::default());
+        let rules = Arc::new(MockRuleResolver::default());
         let audit = Arc::new(MockAudit::default());
         let settings = AppSettings {
             smart_switching: smart,
@@ -526,6 +575,7 @@ mod tests {
             watcher.clone(),
             observer.clone(),
             store,
+            rules.clone(),
             audit.clone(),
         ));
         Harness {
@@ -534,6 +584,7 @@ mod tests {
             switcher,
             watcher,
             observer,
+            rules,
             audit,
         }
     }
@@ -573,6 +624,64 @@ mod tests {
             events.last().unwrap().profile_label.as_deref(),
             Some("Work")
         );
+    }
+
+    #[test]
+    fn rule_match_overrides_manual_assignment() {
+        let h = harness(enabled());
+        let manual = Uuid::new_v4();
+        let rule_profile = Uuid::new_v4();
+        h.switcher
+            .labels
+            .lock()
+            .unwrap()
+            .push((rule_profile, "Rule".into()));
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(manual));
+        *h.rules.forced.lock().unwrap() = Some(rule_profile);
+
+        h.svc.handle_activity("/repo/a");
+
+        // The rule's profile wins over the manual assignment.
+        assert_eq!(
+            h.switcher.applied.lock().unwrap().as_slice(),
+            &[rule_profile]
+        );
+        assert!(actions(&h).contains(&"rule.matched".to_string()));
+    }
+
+    #[test]
+    fn rule_match_applies_without_manual_assignment() {
+        let h = harness(enabled());
+        let rule_profile = Uuid::new_v4();
+        // No manual assignment — the CTO success scenario.
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", None);
+        *h.rules.forced.lock().unwrap() = Some(rule_profile);
+
+        h.svc.handle_activity("/repo/a");
+
+        assert_eq!(
+            h.switcher.applied.lock().unwrap().as_slice(),
+            &[rule_profile]
+        );
+        assert!(actions(&h).contains(&"rule.matched".to_string()));
+    }
+
+    #[test]
+    fn falls_back_to_manual_assignment_when_no_rule_matches() {
+        let h = harness(enabled());
+        let manual = Uuid::new_v4();
+        h.switcher
+            .labels
+            .lock()
+            .unwrap()
+            .push((manual, "Work".into()));
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(manual));
+        // rules.forced stays None → no rule matches; manual assignment applies.
+
+        h.svc.handle_activity("/repo/a");
+
+        assert_eq!(h.switcher.applied.lock().unwrap().as_slice(), &[manual]);
+        assert!(!actions(&h).contains(&"rule.matched".to_string()));
     }
 
     #[test]

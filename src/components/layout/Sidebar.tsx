@@ -8,6 +8,7 @@ import {
   ListTimeline,
   Lock,
   Person,
+  Sliders,
 } from "@gravity-ui/icons";
 import type { ComponentType, SVGAttributes } from "react";
 // import { Avatar, Kbd, Separator } from "@/components/ui";
@@ -34,6 +35,7 @@ const IDENTITY_NAV: NavItem[] = [
 
 const WORKSPACE_NAV: NavItem[] = [
   { name: "repos", label: "Repositories", Icon: Folder },
+  { name: "rules", label: "Rules", Icon: Sliders },
   { name: "activity", label: "Activity", Icon: ListTimeline },
 ];
 

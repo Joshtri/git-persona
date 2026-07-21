@@ -51,7 +51,7 @@ Frontend branches on `error.code` (typed enum), never on `error.message` text.
 
 No router. Navigation is a Zustand discriminated union:
 ```typescript
-type View = { name: "profiles" } | { name: "repos" } | { name: "settings" } | { name: "onboarding" }
+type View = { name: "profiles" } | { name: "repos" } | { name: "rules" } | { name: "settings" } | { name: "onboarding" }
 ```
 
 ## Theme
@@ -196,6 +196,59 @@ to the audit log and emits a display-only event (never secrets) to the UI.
 ### Extension points
 
 `WorkspaceWatcher` is the activation seam — editor/terminal detectors become new
-`infra/` adapters with no orchestrator change. `IdentityResolver` is the rules
-seam — a richer rule engine (out of scope now) slots in behind it. Neither touches
-`IdentitySwitchService`.
+`infra/` adapters with no orchestrator change. The rules seam is now the
+`RuleResolver` port consulted before the manual assignment (see Rule Engine
+below). Neither touches the core of `IdentitySwitchService`.
+
+## Rule Engine (Sprint 7)
+
+A declarative **decision layer** that resolves the correct profile for a
+repository automatically — from its path, name, remote URL, host, or owner —
+*before* Smart Switching applies it. The engine only decides; it never edits Git,
+SSH, credentials, or the active marker (see ADR 006).
+
+```
+Watcher → Repository → Rule Engine → Resolved Profile → ProfileService::apply
+```
+
+### Components
+
+```
+domain/rule.rs        Rule, RuleCondition, RuleSubject, RuleOperator, RuleMatch,
+                      RulePreviewInput/Result, RuleSummary, EvaluationContext,
+                      parse_remote (host/owner) — all pure, no I/O
+domain/ports.rs       RuleStore (persistence), RuleResolver (decision port)
+services/rule_service.rs   RuleService: CRUD, duplicate, enable/disable, reorder,
+                           evaluate/preview, import/export, + RuleResolver impl
+infra/rule_store_tauri.rs  JSON persistence (gitpersona.json, "rules" key)
+commands/rules.rs     rule_{list,get,create,update,delete,duplicate,set_enabled,
+                      set_all_enabled,reorder,preview,summary,export,import}
+```
+
+Frontend: `stores/rules.ts` owns async state; `features/rules/*` renders the list,
+the visual IF/THEN builder, and the read-only preview; a Rules nav item, command
+palette group, and dashboard widget complete the surface.
+
+### Resolution order
+
+Enabled rules are evaluated by `priority` ascending; **first match wins** and
+returns its `target_profile_id`. If no rule matches, resolution **falls back** to
+the manual `Repo.active_profile_id` — so existing assignments keep working exactly
+as in Sprint 6. A rule match is recorded as `rule.matched`. The orchestrator gains
+one dependency (`RuleResolver`) and one step (`resolve_profile`); nothing else in
+Smart Switching changes.
+
+### Conditions
+
+`subject · operator · value`, deterministic and declarative only. Path / name /
+remote-URL support contains · starts_with · ends_with · equals; remote host and
+owner (parsed from the remote URL) support equals only. Matching is
+case-insensitive. **No regex, glob, DSL, scripting, or plugins** — evaluation is a
+linear scan of string comparisons and can never execute code or reach the network.
+
+### Preview & sharing
+
+`rule_preview` evaluates a hypothetical repository and reports the matched rule,
+resolved profile, and reason — never applying a switch or updating dashboard state.
+`rule_export` / `rule_import` move the rule set as JSON between machines (the
+frontend picks the path via `dialog:allow-save`; file I/O stays in Rust).

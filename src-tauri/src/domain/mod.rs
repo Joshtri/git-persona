@@ -5,5 +5,6 @@ pub(crate) mod identity_switch;
 pub(crate) mod ports;
 pub(crate) mod profile;
 pub(crate) mod repo;
+pub(crate) mod rule;
 pub(crate) mod settings;
 pub(crate) mod ssh;

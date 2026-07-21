@@ -51,4 +51,7 @@ pub(crate) struct ResolvedRepo {
     pub(crate) repo_id: Uuid,
     pub(crate) repo_name: String,
     pub(crate) profile_id: Option<Uuid>,
+    /// The repository's `origin` remote URL, when known — used by the Rule Engine
+    /// to derive host and owner facts. Not the assignment itself.
+    pub(crate) remote_origin: Option<String>,
 }

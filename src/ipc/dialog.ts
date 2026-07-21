@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 /**
  * Prompt the user to pick one or more folders to scan for Git repositories.
@@ -25,5 +25,28 @@ export async function pickPrivateKeyFile(): Promise<string | null> {
  */
 export async function pickDirectory(): Promise<string | null> {
   const selected = await open({ directory: true, multiple: false });
+  return typeof selected === "string" ? selected : null;
+}
+
+const RULES_FILTER = [{ name: "Rules", extensions: ["json"] }];
+
+/**
+ * Prompt for a destination path to export the rules file to.
+ * Returns null when the dialog is cancelled.
+ */
+export async function pickRulesExportPath(): Promise<string | null> {
+  return save({ defaultPath: "rules.json", filters: RULES_FILTER });
+}
+
+/**
+ * Prompt for a rules JSON file to import.
+ * Returns null when the dialog is cancelled.
+ */
+export async function pickRulesImportFile(): Promise<string | null> {
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    filters: RULES_FILTER,
+  });
   return typeof selected === "string" ? selected : null;
 }

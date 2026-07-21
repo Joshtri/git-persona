@@ -55,3 +55,33 @@ export const credentialEditSchema = z.object({
 
 export type CredentialFormData = z.infer<typeof credentialSchema>;
 export type CredentialEditFormData = z.infer<typeof credentialEditSchema>;
+
+export const RULE_SUBJECT_VALUES = [
+  "RepoPath",
+  "RepoName",
+  "RemoteUrl",
+  "RemoteHost",
+  "Owner",
+] as const;
+
+export const RULE_OPERATOR_VALUES = ["Contains", "StartsWith", "EndsWith", "Equals"] as const;
+
+/** Subjects that only support the `Equals` operator (see backend `RuleSubject::allows`). */
+export const EQUALS_ONLY_SUBJECTS = ["RemoteHost", "Owner"] as const;
+
+export const ruleSchema = z
+  .object({
+    name: z.string().min(1, "Rule name is required").max(80),
+    subject: z.enum(RULE_SUBJECT_VALUES),
+    operator: z.enum(RULE_OPERATOR_VALUES),
+    value: z.string().min(1, "Condition value is required").max(255),
+    targetProfileId: z.string().min(1, "Select a target profile"),
+  })
+  .refine(
+    (data) =>
+      !(EQUALS_ONLY_SUBJECTS as readonly string[]).includes(data.subject) ||
+      data.operator === "Equals",
+    { path: ["operator"], message: 'This subject only supports "equals"' }
+  );
+
+export type RuleFormData = z.infer<typeof ruleSchema>;

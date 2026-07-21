@@ -26,6 +26,11 @@ use commands::{
         repo_assign_profile, repo_get, repo_list, repo_refresh, repo_remove, repo_reveal,
         repo_scan, repo_toggle_favorite,
     },
+    rules::{
+        rule_create, rule_delete, rule_duplicate, rule_export, rule_get, rule_import, rule_list,
+        rule_preview, rule_reorder, rule_set_all_enabled, rule_set_enabled, rule_summary,
+        rule_update,
+    },
     settings::{settings_get, settings_set},
     ssh::{
         ssh_assign_profile, ssh_config_open, ssh_config_preview, ssh_generate, ssh_import,
@@ -88,6 +93,19 @@ pub fn run() {
             credential_switch,
             credential_delete,
             credential_open_manager,
+            rule_list,
+            rule_get,
+            rule_create,
+            rule_update,
+            rule_delete,
+            rule_duplicate,
+            rule_set_enabled,
+            rule_set_all_enabled,
+            rule_reorder,
+            rule_preview,
+            rule_summary,
+            rule_export,
+            rule_import,
             smart_switch_status,
             smart_switch_set_enabled,
             smart_switch_restart,
@@ -110,6 +128,10 @@ mod export_bindings {
         identity_switch::{SmartSwitchStatus, SwitchEvent, SwitchStatus},
         profile::Profile,
         repo::{Repo, ScanProgress},
+        rule::{
+            Rule, RuleCondition, RuleMatch, RuleOperator, RulePreviewInput, RulePreviewResult,
+            RuleSubject, RuleSummary,
+        },
         settings::{AppSettings, SmartSwitchingSettings, Theme},
         ssh::{SshAlgorithm, SshKey},
     };
@@ -132,5 +154,13 @@ mod export_bindings {
         SmartSwitchStatus::export_all_to("../src/ipc/").unwrap();
         SwitchEvent::export_all_to("../src/ipc/").unwrap();
         SwitchStatus::export_all_to("../src/ipc/").unwrap();
+        Rule::export_all_to("../src/ipc/").unwrap();
+        RuleCondition::export_all_to("../src/ipc/").unwrap();
+        RuleSubject::export_all_to("../src/ipc/").unwrap();
+        RuleOperator::export_all_to("../src/ipc/").unwrap();
+        RuleMatch::export_all_to("../src/ipc/").unwrap();
+        RulePreviewInput::export_all_to("../src/ipc/").unwrap();
+        RulePreviewResult::export_all_to("../src/ipc/").unwrap();
+        RuleSummary::export_all_to("../src/ipc/").unwrap();
     }
 }

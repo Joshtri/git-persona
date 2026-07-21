@@ -38,6 +38,16 @@ vi.mock("@/ipc/client", () => ({
   smartSwitchResume: vi.fn().mockResolvedValue(mockSmartStatus),
   smartSwitchConfirm: vi.fn().mockResolvedValue(undefined),
   smartSwitchCancel: vi.fn().mockResolvedValue(undefined),
+  ruleList: vi.fn().mockResolvedValue([]),
+  ruleCreate: vi.fn().mockRejectedValue({ code: "NOT_IMPLEMENTED", message: "not implemented" }),
+  ruleUpdate: vi.fn().mockRejectedValue({ code: "NOT_IMPLEMENTED", message: "not implemented" }),
+  ruleDelete: vi.fn().mockResolvedValue(undefined),
+  ruleDuplicate: vi.fn().mockResolvedValue(undefined),
+  ruleSetEnabled: vi.fn().mockResolvedValue(undefined),
+  ruleSetAllEnabled: vi.fn().mockResolvedValue([]),
+  ruleReorder: vi.fn().mockResolvedValue([]),
+  rulePreview: vi.fn().mockResolvedValue({ matched: null }),
+  ruleSummary: vi.fn().mockResolvedValue({ active: 0, disabled: 0, last_match: null }),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
