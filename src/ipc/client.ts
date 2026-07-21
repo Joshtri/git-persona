@@ -5,6 +5,12 @@ import type {
   Credential,
   Profile,
   Repo,
+  Rule,
+  RuleOperator,
+  RulePreviewInput,
+  RulePreviewResult,
+  RuleSubject,
+  RuleSummary,
   SmartSwitchStatus,
   SshAlgorithm,
   SshKey,
@@ -202,6 +208,71 @@ export async function credentialDelete(id: string): Promise<void> {
 
 export async function credentialOpenManager(): Promise<void> {
   return invoke<void>("credential_open_manager");
+}
+
+export async function ruleList(): Promise<Rule[]> {
+  return invoke<Rule[]>("rule_list");
+}
+
+export async function ruleGet(id: string): Promise<Rule> {
+  return invoke<Rule>("rule_get", { id });
+}
+
+export async function ruleCreate(
+  name: string,
+  subject: RuleSubject,
+  operator: RuleOperator,
+  value: string,
+  targetProfileId: string
+): Promise<Rule> {
+  return invoke<Rule>("rule_create", { name, subject, operator, value, targetProfileId });
+}
+
+export async function ruleUpdate(
+  id: string,
+  name: string,
+  subject: RuleSubject,
+  operator: RuleOperator,
+  value: string,
+  targetProfileId: string
+): Promise<Rule> {
+  return invoke<Rule>("rule_update", { id, name, subject, operator, value, targetProfileId });
+}
+
+export async function ruleDelete(id: string): Promise<void> {
+  return invoke<void>("rule_delete", { id });
+}
+
+export async function ruleDuplicate(id: string): Promise<Rule> {
+  return invoke<Rule>("rule_duplicate", { id });
+}
+
+export async function ruleSetEnabled(id: string, enabled: boolean): Promise<Rule> {
+  return invoke<Rule>("rule_set_enabled", { id, enabled });
+}
+
+export async function ruleSetAllEnabled(enabled: boolean): Promise<Rule[]> {
+  return invoke<Rule[]>("rule_set_all_enabled", { enabled });
+}
+
+export async function ruleReorder(orderedIds: string[]): Promise<Rule[]> {
+  return invoke<Rule[]>("rule_reorder", { orderedIds });
+}
+
+export async function rulePreview(input: RulePreviewInput): Promise<RulePreviewResult> {
+  return invoke<RulePreviewResult>("rule_preview", { input });
+}
+
+export async function ruleSummary(): Promise<RuleSummary> {
+  return invoke<RuleSummary>("rule_summary");
+}
+
+export async function ruleExport(path: string): Promise<void> {
+  return invoke<void>("rule_export", { path });
+}
+
+export async function ruleImport(path: string, replace: boolean): Promise<Rule[]> {
+  return invoke<Rule[]>("rule_import", { path, replace });
 }
 
 export async function smartSwitchStatus(): Promise<SmartSwitchStatus> {

@@ -7,6 +7,7 @@ import {
   Key,
   ListTimeline,
   Person,
+  Sliders,
 } from "@gravity-ui/icons";
 import type { ComponentType, SVGAttributes } from "react";
 import { useEffect } from "react";
@@ -23,6 +24,7 @@ import { useActivityStore } from "@/stores/activity";
 import { useCredentialsStore } from "@/stores/credentials";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
+import { useRulesStore } from "@/stores/rules";
 import { useSshStore } from "@/stores/ssh";
 import { useViewStore, type ViewName } from "@/stores/view";
 
@@ -56,6 +58,14 @@ function actionLabel(action: string): string {
     "identity.same_profile": "Already on assigned profile",
     "identity.no_assignment": "Repository has no assigned profile",
     "identity.switch_cancelled": "Cancelled automatic switch",
+    "rule.created": "Created rule",
+    "rule.updated": "Updated rule",
+    "rule.deleted": "Deleted rule",
+    "rule.enabled": "Enabled rule",
+    "rule.disabled": "Disabled rule",
+    "rule.matched": "Rule resolved a profile",
+    "rule.imported": "Imported rules",
+    "rule.exported": "Exported rules",
   };
   return map[action] ?? action;
 }
@@ -105,11 +115,18 @@ export function DashboardView() {
   const { items: repos } = useReposStore();
   const { items: sshKeys, fetch: fetchSsh } = useSshStore();
   const { items: credentials, fetch: fetchCredentials } = useCredentialsStore();
+  const {
+    summary: ruleSummaryData,
+    fetch: fetchRules,
+    fetchSummary: fetchRuleSummary,
+  } = useRulesStore();
 
   useEffect(() => {
     fetchSsh();
     fetchCredentials();
-  }, [fetchSsh, fetchCredentials]);
+    fetchRules();
+    fetchRuleSummary();
+  }, [fetchSsh, fetchCredentials, fetchRules, fetchRuleSummary]);
 
   const recentRepos = [...repos]
     .sort((a, b) => b.detected_at.localeCompare(a.detected_at))
@@ -355,6 +372,47 @@ export function DashboardView() {
                 {p.label} · {p.count}
               </Badge>
             ))
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Rules */}
+      <SectionCard>
+        <CardHeader
+          title="Rules"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate({ name: "rules" })}>
+              Manage
+            </Button>
+          }
+        />
+        <div className="grid grid-cols-2 gap-px bg-(--color-border)">
+          {[
+            { label: "Active", value: ruleSummaryData?.active ?? 0 },
+            { label: "Disabled", value: ruleSummaryData?.disabled ?? 0 },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="flex flex-col gap-0.5 p-3.5 bg-(--color-surface) items-center"
+            >
+              <span className="text-lg font-semibold text-(--color-fg)">{stat.value}</span>
+              <span className="text-[10px] uppercase tracking-wider text-(--color-muted)">
+                {stat.label}
+              </span>
+            </div>
+          ))}
+        </div>
+        <Separator />
+        <div className="px-4 py-3 flex items-center gap-2 min-w-0">
+          <Sliders className="size-3.5 text-(--color-muted) shrink-0" aria-hidden="true" />
+          <span className="text-xs text-(--color-secondary) shrink-0">Last matched</span>
+          {ruleSummaryData?.last_match ? (
+            <span className="text-xs text-(--color-fg) truncate">
+              {ruleSummaryData.last_match.rule_name} →{" "}
+              {getProfileLabel(ruleSummaryData.last_match.profile_id)}
+            </span>
+          ) : (
+            <span className="text-xs text-(--color-muted)">No rule has matched yet</span>
           )}
         </div>
       </SectionCard>

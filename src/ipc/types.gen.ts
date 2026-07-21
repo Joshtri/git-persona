@@ -112,3 +112,52 @@ export interface SmartSwitchStatus {
   last_switch: SwitchEvent | null;
   started_at: string | null;
 }
+
+export type RuleSubject =
+  | "RepoPath"
+  | "RepoName"
+  | "RemoteUrl"
+  | "RemoteHost"
+  | "Owner";
+
+export type RuleOperator = "Contains" | "StartsWith" | "EndsWith" | "Equals";
+
+export interface RuleCondition {
+  subject: RuleSubject;
+  operator: RuleOperator;
+  value: string;
+}
+
+export interface Rule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  target_profile_id: string;
+  condition: RuleCondition;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RuleMatch {
+  rule_id: string;
+  rule_name: string;
+  profile_id: string;
+  reason: string;
+}
+
+export interface RulePreviewInput {
+  path: string;
+  name: string;
+  remote_url: string | null;
+}
+
+export interface RulePreviewResult {
+  matched: RuleMatch | null;
+}
+
+export interface RuleSummary {
+  active: number;
+  disabled: number;
+  last_match: RuleMatch | null;
+}

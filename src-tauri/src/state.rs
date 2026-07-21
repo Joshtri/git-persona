@@ -5,9 +5,10 @@ use crate::{
         git_config_gix::GixGitConfig, git_dir_watcher::GitDirWatcher,
         git_meta::FsGitMetadataReader, paths, profile_store_tauri::TauriProfileStore,
         repo_scanner_fs::FsRepoScanner, repo_store_tauri::TauriRepoStore,
-        ssh_config_writer::FsSshConfigWriter, ssh_key_generator::SshKeyPairGenerator,
-        ssh_key_reader::SshKeyFileReader, ssh_scanner_fs::FsSshScanner,
-        ssh_store_tauri::TauriSshStore, switch_observer_tauri::TauriSwitchObserver,
+        rule_store_tauri::TauriRuleStore, ssh_config_writer::FsSshConfigWriter,
+        ssh_key_generator::SshKeyPairGenerator, ssh_key_reader::SshKeyFileReader,
+        ssh_scanner_fs::FsSshScanner, ssh_store_tauri::TauriSshStore,
+        switch_observer_tauri::TauriSwitchObserver,
     },
     services::{
         activity_service::ActivityService,
@@ -17,6 +18,7 @@ use crate::{
         },
         profile_service::ProfileService,
         repo_service::RepoService,
+        rule_service::RuleService,
         settings_service::SettingsService,
         ssh_service::SshService,
     },
@@ -36,6 +38,7 @@ pub(crate) struct AppState {
     pub(crate) repos: RepoService,
     pub(crate) ssh: SshService,
     pub(crate) credentials: Arc<CredentialService>,
+    pub(crate) rules: Arc<RuleService>,
     pub(crate) identity_switch: Arc<IdentitySwitchService>,
 }
 
@@ -81,6 +84,15 @@ impl AppState {
             audit.clone(),
         ));
 
+        // Rule Engine (Sprint 7) — the decision layer. It selects a profile for a
+        // repository; the switching orchestrator below consults it before falling
+        // back to the manual repository assignment.
+        let rules = Arc::new(RuleService::new(
+            Arc::new(TauriRuleStore::new(app.clone())),
+            store.clone(),
+            audit.clone(),
+        ));
+
         // Smart Identity Switching orchestrator (Sprint 6). It only coordinates
         // existing services — the resolver reads the repo store, and the switcher
         // delegates to the profile-apply pipeline.
@@ -97,6 +109,7 @@ impl AppState {
             watcher,
             observer,
             store.clone(),
+            rules.clone(),
             audit.clone(),
         ));
 
@@ -115,6 +128,7 @@ impl AppState {
                 audit,
             ),
             credentials,
+            rules,
             identity_switch,
         })
     }

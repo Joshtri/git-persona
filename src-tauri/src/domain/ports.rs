@@ -4,6 +4,7 @@ use crate::domain::{
     identity_switch::ResolvedRepo,
     profile::Profile,
     repo::{Repo, RepoMetadata, ScanProgress},
+    rule::{EvaluationContext, Rule, RuleMatch},
     settings::AppSettings,
     ssh::{GeneratedKey, SshAlgorithm, SshConfigEntry, SshKey, SshKeyMetadata},
 };
@@ -43,6 +44,25 @@ pub(crate) trait RepoStore: Send + Sync {
     fn find_by_git_root(&self, git_root: &str) -> Result<Option<Repo>, AppError>;
     fn save(&self, repo: &Repo) -> Result<(), AppError>;
     fn delete(&self, id: Uuid) -> Result<(), AppError>;
+}
+
+/// Persistence for [`Rule`] definitions. Mirrors the other Tauri-store adapters.
+pub(crate) trait RuleStore: Send + Sync {
+    fn load_all(&self) -> Result<Vec<Rule>, AppError>;
+    fn find(&self, id: Uuid) -> Result<Option<Rule>, AppError>;
+    fn save(&self, rule: &Rule) -> Result<(), AppError>;
+    /// Replace the entire rule set — used by reorder and import.
+    fn save_all(&self, rules: &[Rule]) -> Result<(), AppError>;
+    fn delete(&self, id: Uuid) -> Result<(), AppError>;
+}
+
+/// The decision-layer port Smart Switching consults before applying an identity.
+/// Implemented by the rule service; keeps rule evaluation isolated from the
+/// switching orchestrator, which never inspects rule internals.
+pub(crate) trait RuleResolver: Send + Sync {
+    /// The highest-priority enabled rule matching `ctx`, if any. Never mutates
+    /// Git config, credentials, or profiles — it only decides.
+    fn resolve(&self, ctx: &EvaluationContext) -> Result<Option<RuleMatch>, AppError>;
 }
 
 pub(crate) trait RepoScanner: Send + Sync {

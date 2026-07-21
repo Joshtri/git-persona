@@ -4,6 +4,7 @@ export type ViewName =
   | "dashboard"
   | "profiles"
   | "repos"
+  | "rules"
   | "ssh"
   | "credentials"
   | "activity"
@@ -15,6 +16,7 @@ export type View =
   | { name: "dashboard" }
   | { name: "profiles" }
   | { name: "repos" }
+  | { name: "rules" }
   | { name: "ssh" }
   | { name: "credentials" }
   | { name: "activity" }

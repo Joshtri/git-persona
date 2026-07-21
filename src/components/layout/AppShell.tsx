@@ -5,6 +5,7 @@ import { DashboardView } from "@/features/dashboard";
 import { CommandPalette } from "@/features/palette/CommandPalette";
 import { ProfilesView } from "@/features/profiles";
 import { ReposView } from "@/features/repos";
+import { RulesView } from "@/features/rules";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { ConfirmSwitchDialog } from "@/features/smart-switch";
 import { SshView } from "@/features/ssh";
@@ -25,6 +26,8 @@ function ActiveView() {
       return <ProfilesView />;
     case "repos":
       return <ReposView />;
+    case "rules":
+      return <RulesView />;
     case "ssh":
       return <SshView />;
     case "credentials":

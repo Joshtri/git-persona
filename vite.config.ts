@@ -38,6 +38,8 @@ export default defineConfig(async () => ({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    exclude: ["**/src-tauri/**", "**/node_modules/**"],
+    // `tests/` holds Playwright e2e specs run via a separate runner — keep them
+    // out of the Vitest unit run.
+    exclude: ["**/src-tauri/**", "**/node_modules/**", "**/tests/**"],
   },
 }));

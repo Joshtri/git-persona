@@ -19,6 +19,9 @@ import {
   Play,
   Plus,
   Power,
+  Sliders,
+  ToggleOff,
+  ToggleOn,
   TrashBin,
   Xmark,
 } from "@gravity-ui/icons";
@@ -29,6 +32,7 @@ import { cn } from "@/lib/cn";
 import { useCredentialsStore } from "@/stores/credentials";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
+import { useRulesStore } from "@/stores/rules";
 import { useSmartSwitchStore } from "@/stores/smartSwitch";
 import { useSshStore } from "@/stores/ssh";
 import { useViewStore } from "@/stores/view";
@@ -64,6 +68,13 @@ export function CommandPalette() {
     resume: resumeWatcher,
     restart: restartWatcher,
   } = useSmartSwitchStore();
+  const {
+    setCreateOpen: setRuleCreateOpen,
+    setPreviewOpen: setRulePreviewOpen,
+    setAllEnabled: setAllRulesEnabled,
+    exportRules,
+    importRules,
+  } = useRulesStore();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -104,6 +115,13 @@ export function CommandPalette() {
       label: "Go to Credentials",
       Icon: Lock,
       action: () => navigate({ name: "credentials" }),
+    },
+    {
+      id: "nav-rules",
+      group: "Navigate",
+      label: "Go to Rules",
+      Icon: Sliders,
+      action: () => navigate({ name: "rules" }),
     },
     {
       id: "nav-activity",
@@ -263,6 +281,69 @@ export function CommandPalette() {
     },
   ];
 
+  const rulesCommands: Command[] = [
+    {
+      id: "rule-create",
+      group: "Rules",
+      label: "Create Rule",
+      Icon: Plus,
+      action: () => {
+        navigate({ name: "rules" });
+        setRuleCreateOpen(true);
+      },
+    },
+    {
+      id: "rule-test",
+      group: "Rules",
+      label: "Test Rule",
+      Icon: Sliders,
+      action: () => {
+        navigate({ name: "rules" });
+        setRulePreviewOpen(true);
+      },
+    },
+    {
+      id: "rule-enable-all",
+      group: "Rules",
+      label: "Enable Rules",
+      Icon: ToggleOn,
+      action: () => {
+        setAllRulesEnabled(true);
+        closePalette();
+      },
+    },
+    {
+      id: "rule-disable-all",
+      group: "Rules",
+      label: "Disable Rules",
+      Icon: ToggleOff,
+      action: () => {
+        setAllRulesEnabled(false);
+        closePalette();
+      },
+    },
+    {
+      id: "rule-import",
+      group: "Rules",
+      label: "Import Rules",
+      Icon: FileArrowUp,
+      action: () => {
+        navigate({ name: "rules" });
+        importRules(false);
+      },
+    },
+    {
+      id: "rule-export",
+      group: "Rules",
+      label: "Export Rules",
+      Icon: FileText,
+      action: () => {
+        exportRules();
+        closePalette();
+      },
+    },
+  ];
+
   const smartSwitchCommands: Command[] = [
     {
       id: "smart-enable",
@@ -330,6 +411,7 @@ export function CommandPalette() {
     ...repoCommands,
     ...sshCommands,
     ...credentialCommands,
+    ...rulesCommands,
     ...smartSwitchCommands,
   ];
 
