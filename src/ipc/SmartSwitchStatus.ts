@@ -4,4 +4,11 @@ import type { SwitchEvent } from "./SwitchEvent";
 /**
  * A snapshot of the watcher/orchestrator state for the dashboard widget.
  */
-export type SmartSwitchStatus = { enabled: boolean, watching: boolean, paused: boolean, repos_monitored: number, last_switch: SwitchEvent | null, started_at: string | null, };
+export type SmartSwitchStatus = {
+  enabled: boolean;
+  watching: boolean;
+  paused: boolean;
+  repos_monitored: number;
+  last_switch: SwitchEvent | null;
+  started_at: string | null;
+};

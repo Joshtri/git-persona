@@ -182,6 +182,14 @@ impl CredentialVault for WindowsCredentialVault {
         }))
     }
 
+    fn reveal(&self, target: &str) -> Result<Option<Secret>, AppError> {
+        Ok(read_raw(target)?.map(|(_, mut blob)| {
+            let secret = Zeroizing::new(string_from_utf16le(&blob));
+            blob.zeroize();
+            secret
+        }))
+    }
+
     fn promote(&self, from: &str, to: &str, username: &str) -> Result<VaultSnapshot, AppError> {
         let (_, mut blob) =
             read_raw(from)?.ok_or_else(|| AppError::Credential("backing secret missing".into()))?;

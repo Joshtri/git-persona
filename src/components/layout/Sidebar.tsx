@@ -1,4 +1,7 @@
+import { Popover } from "@base-ui/react/popover";
 import {
+  Check,
+  ChevronsExpandVertical,
   CircleInfo,
   CodeFork,
   Folder,
@@ -10,7 +13,7 @@ import {
   Person,
   Sliders,
 } from "@gravity-ui/icons";
-import type { ComponentType, SVGAttributes } from "react";
+import { type ComponentType, type SVGAttributes, useEffect, useState } from "react";
 // import { Avatar, Kbd, Separator } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useProfilesStore } from "@/stores/profiles";
@@ -97,26 +100,32 @@ function NavSection({ label, items }: { label: string; items: NavItem[] }) {
   );
 }
 
-export function Sidebar() {
-  const { current, navigate, openPalette } = useViewStore();
-  const { items: profiles, activeProfileId } = useProfilesStore();
+function ProfileSwitcher() {
+  const [open, setOpen] = useState(false);
+  const navigate = useViewStore((s) => s.navigate);
+  const { items: profiles, activeProfileId, apply, fetch } = useProfilesStore();
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
 
-  return (
-    <aside className="w-52 flex flex-col shrink-0 border-r border-(--color-border) bg-(--color-surface) select-none">
-      <div className="h-11 flex items-center gap-2.5 px-3.5 border-b border-(--color-border)">
-        <div className="size-6 rounded-(--radius-sm) bg-(--color-brand-500) flex items-center justify-center shrink-0">
-          <CodeFork className="size-3.5 text-black dark:text-white" aria-hidden="true" />
-        </div>
-        <span className="text-sm font-semibold text-(--color-fg) tracking-tight">GitPersona</span>
-      </div>
+  // The sidebar is always mounted, so a user who lands anywhere but Profiles
+  // would otherwise see an empty switcher. Load profiles once if we have none.
+  useEffect(() => {
+    if (useProfilesStore.getState().items.length === 0) {
+      fetch();
+    }
+  }, [fetch]);
 
-      {/* Active profile pill */}
-      <button
-        type="button"
-        onClick={() => navigate({ name: "profiles" })}
-        className="mx-2.5 mt-3 mb-1 flex items-center gap-2 px-2.5 py-1.5 rounded-(--radius-md) bg-(--color-surface-2) border border-(--color-border) hover:bg-(--color-surface-3) transition-colors"
-        title="Active profile"
+  const choose = (id: string) => {
+    setOpen(false);
+    if (id !== activeProfileId) {
+      apply(id);
+    }
+  };
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        className="mx-2.5 mt-3 mb-1 flex items-center gap-2 px-2.5 py-1.5 rounded-(--radius-md) bg-(--color-surface-2) border border-(--color-border) hover:bg-(--color-surface-3) transition-colors cursor-pointer"
+        title="Switch active profile"
       >
         {activeProfile ? (
           <>
@@ -129,15 +138,84 @@ export function Sidebar() {
                 {activeProfile.identity.email}
               </span>
             </div>
-            <div
-              className="ml-auto size-1.5 rounded-full bg-(--color-success) shrink-0"
+            <ChevronsExpandVertical
+              className="ml-auto size-3 text-(--color-muted) shrink-0"
               aria-hidden="true"
             />
           </>
         ) : (
-          <span className="text-xs text-(--color-muted)">No profile applied</span>
+          <>
+            <span className="text-xs text-(--color-muted)">Select a profile</span>
+            <ChevronsExpandVertical
+              className="ml-auto size-3 text-(--color-muted) shrink-0"
+              aria-hidden="true"
+            />
+          </>
         )}
-      </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner sideOffset={6} align="start">
+          <Popover.Popup className="z-50 w-48 rounded-(--radius-md) border border-(--color-border) p-1 shadow-(--shadow-md) outline-none bg-(--color-surface)">
+            <p className="px-2.5 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted) select-none">
+              Switch profile
+            </p>
+            {profiles.map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                onClick={() => choose(profile.id)}
+                className="flex w-full items-center gap-2 rounded-(--radius-sm) px-2 py-1.5 text-left hover:bg-(--color-surface-2)"
+              >
+                <Avatar name={profile.identity.name} color={profile.color} size="sm" />
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-xs font-medium text-(--color-fg) truncate leading-tight">
+                    {profile.label}
+                  </span>
+                  <span className="text-[10px] text-(--color-muted) truncate leading-tight">
+                    {profile.identity.email}
+                  </span>
+                </div>
+                {profile.id === activeProfileId && (
+                  <Check className="size-3.5 shrink-0 text-(--color-success)" aria-hidden="true" />
+                )}
+              </button>
+            ))}
+            {profiles.length === 0 && (
+              <p className="px-2.5 py-1.5 text-xs text-(--color-muted)">No profiles yet</p>
+            )}
+            <Separator className="my-1" />
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                navigate({ name: "profiles" });
+              }}
+              className="flex w-full items-center gap-2 rounded-(--radius-sm) px-2.5 py-1.5 text-left text-xs text-(--color-secondary) hover:bg-(--color-surface-2)"
+            >
+              <Person className="size-3.5 shrink-0" aria-hidden="true" />
+              Manage profiles
+            </button>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+export function Sidebar() {
+  const { current, navigate, openPalette } = useViewStore();
+
+  return (
+    <aside className="w-52 flex flex-col shrink-0 border-r border-(--color-border) bg-(--color-surface) select-none">
+      <div className="h-11 flex items-center gap-2.5 px-3.5 border-b border-(--color-border)">
+        <div className="size-6 rounded-(--radius-sm) bg-(--color-brand-500) flex items-center justify-center shrink-0">
+          <CodeFork className="size-3.5 text-black dark:text-white" aria-hidden="true" />
+        </div>
+        <span className="text-sm font-semibold text-(--color-fg) tracking-tight">GitPersona</span>
+      </div>
+
+      {/* Quick active-profile switcher */}
+      <ProfileSwitcher />
 
       <nav className="flex-1 flex flex-col gap-3 px-2 py-2 overflow-y-auto">
         <NavButton

@@ -3,6 +3,10 @@ use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+// Each bool is an independent, persisted user preference mapping 1:1 to a toggle
+// in the Settings UI, so collapsing them into a state type would obscure them
+// and break the wire format.
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct AppSettings {
     pub(crate) theme: Theme,
     pub(crate) show_audit_log: bool,
@@ -11,6 +15,23 @@ pub(crate) struct AppSettings {
     /// files written before this field was introduced loadable.
     #[serde(default)]
     pub(crate) smart_switching: SmartSwitchingSettings,
+    /// `true` once the first-run onboarding wizard has been completed or skipped.
+    /// `#[serde(default)]` (to `false`) makes existing users see onboarding once,
+    /// then keeps them from being prompted again.
+    #[serde(default)]
+    pub(crate) onboarded: bool,
+    /// Register `GitPersona` to start automatically when the user logs in.
+    /// Applied by (de)registering the OS autostart entry when settings are saved.
+    #[serde(default)]
+    pub(crate) launch_at_startup: bool,
+    /// Start hidden in the system tray instead of showing the main window. Also
+    /// implied when the app is launched by the autostart entry (`--hidden`).
+    #[serde(default)]
+    pub(crate) start_minimized: bool,
+    /// Keep running in the tray when the main window is closed, instead of
+    /// quitting, so Smart Switching keeps watching in the background.
+    #[serde(default)]
+    pub(crate) close_to_tray: bool,
 }
 
 /// Configuration for the Smart Identity Switching engine. Read live on every
@@ -68,6 +89,10 @@ impl Default for AppSettings {
             show_audit_log: true,
             auto_scan_repos: false,
             smart_switching: SmartSwitchingSettings::default(),
+            onboarded: false,
+            launch_at_startup: false,
+            start_minimized: false,
+            close_to_tray: false,
         }
     }
 }

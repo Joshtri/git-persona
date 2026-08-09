@@ -1,11 +1,13 @@
 use crate::domain::{
     audit::AuditEntry,
+    credential::{is_supported_host, parse_https_remote},
     identity::Identity,
     ports::{AuditSink, GitConfigBackend, ProfileCredentialSync, ProfileStore, RepoStore},
     profile::Profile,
 };
 use crate::error::AppError;
 use chrono::Utc;
+use std::path::Path;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -195,6 +197,88 @@ impl ProfileService {
         Ok(())
     }
 
+    /// Pin a profile's identity into a single repository's **local** Git config.
+    ///
+    /// Unlike [`apply`](Self::apply), this touches neither global config,
+    /// credentials, nor the active marker — it only guarantees that a `git
+    /// commit` in this repository reads the correct author *before* the commit
+    /// is written. Applied proactively (on assignment / rule match / launch),
+    /// this is what removes the one-commit lag of purely reactive switching.
+    ///
+    /// When the profile owns an HTTPS credential for the repository's remote,
+    /// the credential is also pinned onto the repo's **path-scoped** Git target
+    /// (and `credential.<scheme>://<host>.useHttpPath` enabled locally), so
+    /// `pull`/`push` authenticate as this profile even while another profile is
+    /// globally active.
+    pub(crate) fn apply_local(&self, git_root: &Path, profile_id: Uuid) -> Result<(), AppError> {
+        let profile = self.find(profile_id)?;
+        self.git_config
+            .set_local_identity(git_root, &profile.identity)?;
+        // Credential pinning is a convenience for push/pull auth; a failure here
+        // (e.g. the profile's backing secret is missing from the vault) must not
+        // fail the identity pin or the caller's switch. Best-effort.
+        let _ = self.pin_local_credential(git_root, profile_id);
+        self.audit.append(&AuditEntry {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            action: "identity.pin_local".into(),
+            profile_id: Some(profile_id),
+            repo_path: Some(git_root.to_string_lossy().into_owned()),
+        })?;
+        Ok(())
+    }
+
+    /// Enable path-scoped HTTPS auth for a repository and promote the assigned
+    /// profile's credential onto the repo's path-scoped target. No-ops when the
+    /// repository is untracked, the remote is not HTTPS, the host is unsupported,
+    /// or the profile owns no credential for the host. `useHttpPath` is only
+    /// enabled when a credential is actually pinned, so a profile without a
+    /// credential leaves the repository's lookup behavior unchanged.
+    fn pin_local_credential(&self, git_root: &Path, profile_id: Uuid) -> Result<(), AppError> {
+        let Some(repo) = self
+            .repos
+            .find_by_git_root(git_root.to_string_lossy().as_ref())?
+        else {
+            return Ok(());
+        };
+        let Some(remote) = repo.remote_origin.as_deref() else {
+            return Ok(());
+        };
+        let Some((host, path)) = parse_https_remote(remote) else {
+            return Ok(());
+        };
+        if !is_supported_host(&host) {
+            return Ok(());
+        }
+        if self.credentials.pin_path(profile_id, &host, &path)? {
+            self.git_config
+                .set_local_use_http_path(git_root, &host, true)?;
+        }
+        Ok(())
+    }
+
+    /// Undo a per-repository pin: disable path-scoped HTTPS auth locally and
+    /// drop the repo's path-scoped credential so git falls back to the globally
+    /// active credential. No-ops for untracked repositories or non-HTTPS remotes.
+    pub(crate) fn unpin_local(&self, git_root: &Path) -> Result<(), AppError> {
+        let Some(repo) = self
+            .repos
+            .find_by_git_root(git_root.to_string_lossy().as_ref())?
+        else {
+            return Ok(());
+        };
+        let Some(remote) = repo.remote_origin.as_deref() else {
+            return Ok(());
+        };
+        let Some((host, path)) = parse_https_remote(remote) else {
+            return Ok(());
+        };
+        self.git_config
+            .set_local_use_http_path(git_root, &host, false)?;
+        self.credentials.unpin_path(&host, &path)?;
+        Ok(())
+    }
+
     fn apply_git_config(&self, identity: &Identity) -> Result<(), AppError> {
         self.git_config.set_global_name(&identity.name)?;
         self.git_config.set_global_email(&identity.email)?;
@@ -306,6 +390,8 @@ mod tests {
         name: Mutex<Option<String>>,
         email: Mutex<Option<String>>,
         signing_key: Mutex<Option<String>>,
+        local: Mutex<Vec<(String, Identity)>>,
+        use_http_path: Mutex<Vec<(String, String)>>,
     }
 
     impl MockGitConfig {
@@ -314,6 +400,8 @@ mod tests {
                 name: Mutex::new(None),
                 email: Mutex::new(None),
                 signing_key: Mutex::new(None),
+                local: Mutex::new(vec![]),
+                use_http_path: Mutex::new(vec![]),
             }
         }
     }
@@ -340,12 +428,33 @@ mod tests {
             *self.signing_key.lock().unwrap() = key.map(Into::into);
             Ok(())
         }
+        fn set_local_identity(&self, git_root: &Path, identity: &Identity) -> Result<(), AppError> {
+            self.local
+                .lock()
+                .unwrap()
+                .push((git_root.to_string_lossy().into_owned(), identity.clone()));
+            Ok(())
+        }
+        fn set_local_use_http_path(
+            &self,
+            git_root: &Path,
+            host: &str,
+            enabled: bool,
+        ) -> Result<(), AppError> {
+            self.use_http_path.lock().unwrap().push((
+                git_root.to_string_lossy().into_owned(),
+                format!("{host}:{enabled}"),
+            ));
+            Ok(())
+        }
     }
 
     #[derive(Default)]
     struct MockCredentialSync {
         switched: Mutex<Vec<Uuid>>,
         rolled_back: Mutex<u32>,
+        pinned: Mutex<Vec<(Uuid, String, String)>>,
+        unpinned: Mutex<Vec<(String, String)>>,
     }
 
     impl ProfileCredentialSync for MockCredentialSync {
@@ -355,6 +464,21 @@ mod tests {
         }
         fn rollback(&self, _txn: CredentialTxn) -> Result<(), AppError> {
             *self.rolled_back.lock().unwrap() += 1;
+            Ok(())
+        }
+        fn pin_path(&self, profile_id: Uuid, host: &str, path: &str) -> Result<bool, AppError> {
+            self.pinned.lock().unwrap().push((
+                profile_id,
+                host.to_string(),
+                path.to_string(),
+            ));
+            Ok(true)
+        }
+        fn unpin_path(&self, host: &str, path: &str) -> Result<(), AppError> {
+            self.unpinned
+                .lock()
+                .unwrap()
+                .push((host.to_string(), path.to_string()));
             Ok(())
         }
     }
@@ -413,6 +537,15 @@ mod tests {
         fn delete(&self, _id: Uuid) -> Result<(), AppError> {
             Ok(())
         }
+        fn load_groups(&self) -> Result<Vec<crate::domain::repo::RepoGroup>, AppError> {
+            Ok(vec![])
+        }
+        fn save_group(&self, _group: &crate::domain::repo::RepoGroup) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn delete_group(&self, _id: Uuid) -> Result<(), AppError> {
+            Ok(())
+        }
     }
 
     fn make_service(
@@ -455,6 +588,31 @@ mod tests {
         (svc, git_config)
     }
 
+    #[allow(clippy::type_complexity)]
+    fn make_service_full(
+        profiles: Vec<Profile>,
+        repos: Vec<Repo>,
+        credentials: Arc<MockCredentialSync>,
+    ) -> (
+        ProfileService,
+        Arc<MockGitConfig>,
+        Arc<MockAudit>,
+        Arc<MockCredentialSync>,
+    ) {
+        let git_config = Arc::new(MockGitConfig::new());
+        let audit = Arc::new(MockAudit::new());
+        let svc = ProfileService::new(
+            Arc::new(MockStore::new(profiles)),
+            Arc::new(MockRepoStore {
+                repos: Mutex::new(repos),
+            }),
+            git_config.clone(),
+            credentials.clone(),
+            audit.clone(),
+        );
+        (svc, git_config, audit, credentials)
+    }
+
     fn repo_assigned_to(profile_id: Uuid) -> Repo {
         Repo {
             id: Uuid::new_v4(),
@@ -467,6 +625,8 @@ mod tests {
             last_opened: None,
             favorite: false,
             detected_at: Utc::now(),
+            group_id: None,
+            path_exists: true,
         }
     }
 
@@ -560,6 +720,139 @@ mod tests {
             .unwrap();
         svc.apply(p.id).unwrap();
         assert_eq!(credentials.switched.lock().unwrap().as_slice(), &[p.id]);
+    }
+
+    #[test]
+    fn apply_local_pins_repo_config_without_touching_global() {
+        let (svc, git, audit) = make_service(vec![]);
+        let p = svc
+            .create("Work".into(), identity("work@example.com"), None)
+            .unwrap();
+        svc.apply_local(Path::new("/tmp/repo"), p.id).unwrap();
+
+        let local = git.local.lock().unwrap();
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].0, "/tmp/repo");
+        assert_eq!(local[0].1.email, "work@example.com");
+        // Global config and active marker untouched by a local pin.
+        assert!(git.email.lock().unwrap().is_none());
+        assert!(svc.get_active().unwrap().is_none());
+        assert!(audit
+            .read_all()
+            .unwrap()
+            .iter()
+            .any(|e| e.action == "identity.pin_local"));
+    }
+
+    #[test]
+    fn apply_local_pins_path_credential_for_https_remote() {
+        let pid = Uuid::new_v4();
+        let profile = Profile {
+            id: pid,
+            label: "Joshtri".into(),
+            identity: identity("joshtri@users.noreply.github.com"),
+            color: None,
+        };
+        let repo = Repo {
+            id: Uuid::new_v4(),
+            name: "laundry".into(),
+            path: "/tmp/laundry".into(),
+            git_root: "/tmp/laundry".into(),
+            active_branch: None,
+            active_profile_id: Some(pid),
+            remote_origin: Some(
+                "https://github.com/Joshtri/landing-page-dolphin-laundry.git/".into(),
+            ),
+            last_opened: None,
+            favorite: false,
+            detected_at: Utc::now(),
+            group_id: None,
+            path_exists: true,
+        };
+        let creds = Arc::new(MockCredentialSync::default());
+        let (svc, git, _, creds) = make_service_full(vec![profile], vec![repo], creds.clone());
+
+        svc.apply_local(Path::new("/tmp/laundry"), pid).unwrap();
+
+        assert_eq!(
+            creds.pinned.lock().unwrap().as_slice(),
+            &[(
+                pid,
+                "github.com".to_string(),
+                "Joshtri/landing-page-dolphin-laundry.git".to_string()
+            )]
+        );
+        // useHttpPath is enabled for the host in the repo's local config.
+        assert_eq!(
+            git.use_http_path.lock().unwrap().as_slice(),
+            &[("/tmp/laundry".to_string(), "github.com:true".to_string())]
+        );
+    }
+
+    #[test]
+    fn apply_local_skips_credential_pin_for_ssh_remote() {
+        let pid = Uuid::new_v4();
+        let profile = Profile {
+            id: pid,
+            label: "Work".into(),
+            identity: identity("work@example.com"),
+            color: None,
+        };
+        let repo = Repo {
+            id: Uuid::new_v4(),
+            name: "repo".into(),
+            path: "/tmp/repo".into(),
+            git_root: "/tmp/repo".into(),
+            active_branch: None,
+            active_profile_id: Some(pid),
+            remote_origin: Some("git@github.com:acme/repo.git".into()),
+            last_opened: None,
+            favorite: false,
+            detected_at: Utc::now(),
+            group_id: None,
+            path_exists: true,
+        };
+        let creds = Arc::new(MockCredentialSync::default());
+        let (svc, git, _, creds) = make_service_full(vec![profile], vec![repo], creds.clone());
+
+        svc.apply_local(Path::new("/tmp/repo"), pid).unwrap();
+
+        assert!(creds.pinned.lock().unwrap().is_empty());
+        assert!(git.use_http_path.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn unpin_local_disables_use_http_path_and_removes_credential() {
+        let repo = Repo {
+            id: Uuid::new_v4(),
+            name: "laundry".into(),
+            path: "/tmp/laundry".into(),
+            git_root: "/tmp/laundry".into(),
+            active_branch: None,
+            active_profile_id: None,
+            remote_origin: Some("https://github.com/Joshtri/landing-page-dolphin-laundry.git".into()),
+            last_opened: None,
+            favorite: false,
+            detected_at: Utc::now(),
+            group_id: None,
+            path_exists: true,
+        };
+        let creds = Arc::new(MockCredentialSync::default());
+        let (svc, git, _, creds) = make_service_full(vec![], vec![repo], creds.clone());
+
+        svc.unpin_local(Path::new("/tmp/laundry")).unwrap();
+
+        assert_eq!(
+            git.use_http_path.lock().unwrap().as_slice(),
+            &[("/tmp/laundry".to_string(), "github.com:false".to_string())]
+        );
+        assert_eq!(
+            creds.unpinned.lock().unwrap().as_slice(),
+            &[(
+                "github.com".to_string(),
+                "Joshtri/landing-page-dolphin-laundry.git".to_string()
+            )]
+        );
     }
 
     #[test]

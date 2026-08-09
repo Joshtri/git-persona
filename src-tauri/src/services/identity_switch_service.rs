@@ -81,6 +81,11 @@ impl IdentitySwitcher for ProfileIdentitySwitcher {
     fn apply(&self, profile_id: Uuid) -> Result<(), AppError> {
         self.profiles.apply(profile_id)
     }
+
+    fn apply_local(&self, git_root: &str, profile_id: Uuid) -> Result<(), AppError> {
+        self.profiles
+            .apply_local(std::path::Path::new(git_root), profile_id)
+    }
 }
 
 // ---- orchestrator --------------------------------------------------------
@@ -162,6 +167,9 @@ impl IdentitySwitchService {
                 }
             });
             self.watcher.start(&roots, on_activity)?;
+            // Pin every tracked repo up front so the correct author is already in
+            // local config before the first commit — not applied a commit late.
+            self.pin_all();
             let mut started = locked(&self.started_at)?;
             if started.is_none() {
                 *started = Some(Utc::now());
@@ -235,6 +243,35 @@ impl IdentitySwitchService {
         self.record("identity.switch_cancelled", None, git_root)
     }
 
+    /// Proactively pin the resolved profile into a single repository's local Git
+    /// config, so the identity is already correct *before* the next commit —
+    /// independent of when the watcher would otherwise react. A no-op when the
+    /// repository is untracked or resolves to no profile. Never touches global
+    /// config or the active marker.
+    pub(crate) fn pin_repo(&self, git_root: &str) -> Result<(), AppError> {
+        let Some(resolved) = self.resolver.resolve(git_root)? else {
+            return Ok(());
+        };
+        let Some(profile_id) = self.resolve_profile(&resolved, git_root)? else {
+            return Ok(());
+        };
+        self.switcher.apply_local(git_root, profile_id)
+    }
+
+    /// Pin every tracked repository's resolved identity into its local config.
+    /// Best-effort: a failure on one repository (missing, bare, permission) must
+    /// not abort the rest. Used on launch/reconcile so first commits are correct
+    /// even for repositories driven only by a rule. Also pins each repo's
+    /// path-scoped HTTPS credential when its profile owns one.
+    pub(crate) fn pin_all(&self) {
+        let Ok(roots) = self.resolver.watchable_roots() else {
+            return;
+        };
+        for root in roots {
+            let _ = self.pin_repo(&root);
+        }
+    }
+
     /// Entry point invoked from the watcher thread. Errors are swallowed so a
     /// transient failure (repo removed, key missing, Git busy) never crashes the
     /// watcher or the app.
@@ -282,6 +319,12 @@ impl IdentitySwitchService {
         // marker atomically, rolling back on failure. SSH follows via the managed
         // `~/.ssh/config` block.
         self.switcher.apply(profile_id)?;
+        // Pin the identity into this repo's local config so the *next* commit
+        // here reads the right author even before global switching would react.
+        // Best-effort: the global switch above already succeeded, so a local-pin
+        // failure (a moved repo, a missing backing credential) must never abort
+        // or hide the switch — otherwise the engine silently appears to stop.
+        let _ = self.switcher.apply_local(git_root, profile_id);
         self.record("identity.auto_switch", Some(profile_id), git_root)?;
         let event =
             self.build_event(SwitchStatus::Switched, resolved, Some(profile_id), git_root)?;
@@ -404,7 +447,11 @@ mod tests {
     struct MockSwitcher {
         active: Mutex<Option<Uuid>>,
         applied: Mutex<Vec<Uuid>>,
+        pinned: Mutex<Vec<(String, Uuid)>>,
         labels: Mutex<Vec<(Uuid, String)>>,
+        /// When set, `apply_local` fails — simulating a moved repo or a missing
+        /// backing credential. The switch itself must survive this.
+        fail_local: Mutex<bool>,
     }
     impl IdentitySwitcher for MockSwitcher {
         fn active_profile_id(&self) -> Result<Option<Uuid>, AppError> {
@@ -422,6 +469,16 @@ mod tests {
         fn apply(&self, profile_id: Uuid) -> Result<(), AppError> {
             self.applied.lock().unwrap().push(profile_id);
             *self.active.lock().unwrap() = Some(profile_id);
+            Ok(())
+        }
+        fn apply_local(&self, git_root: &str, profile_id: Uuid) -> Result<(), AppError> {
+            if *self.fail_local.lock().unwrap() {
+                return Err(AppError::Internal("local pin failed".into()));
+            }
+            self.pinned
+                .lock()
+                .unwrap()
+                .push((git_root.to_string(), profile_id));
             Ok(())
         }
     }
@@ -617,6 +674,11 @@ mod tests {
         h.svc.handle_activity("/repo/a");
 
         assert_eq!(h.switcher.applied.lock().unwrap().as_slice(), &[pid]);
+        // The repo is also pinned locally so its next commit reads the right author.
+        assert_eq!(
+            h.switcher.pinned.lock().unwrap().as_slice(),
+            &[("/repo/a".to_string(), pid)]
+        );
         assert!(actions(&h).contains(&"identity.auto_switch".to_string()));
         let events = h.observer.events.lock().unwrap();
         assert_eq!(events.last().unwrap().status, SwitchStatus::Switched);
@@ -624,6 +686,26 @@ mod tests {
             events.last().unwrap().profile_label.as_deref(),
             Some("Work")
         );
+    }
+
+    #[test]
+    fn local_pin_failure_does_not_suppress_switch() {
+        // A failing local pin (moved repo, missing backing credential) must not
+        // abort the switch: the global identity still changes and the UI still
+        // gets a Switched event. Regression guard for the "engine stopped
+        // switching" bug caused by a hard `?` on apply_local.
+        let h = harness(enabled());
+        let pid = Uuid::new_v4();
+        h.switcher.labels.lock().unwrap().push((pid, "Work".into()));
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(pid));
+        *h.switcher.fail_local.lock().unwrap() = true;
+
+        h.svc.handle_activity("/repo/a");
+
+        assert_eq!(h.switcher.applied.lock().unwrap().as_slice(), &[pid]);
+        assert!(actions(&h).contains(&"identity.auto_switch".to_string()));
+        let events = h.observer.events.lock().unwrap();
+        assert_eq!(events.last().unwrap().status, SwitchStatus::Switched);
     }
 
     #[test]
@@ -765,6 +847,38 @@ mod tests {
         h.svc.set_enabled(false).unwrap();
         assert!(!h.watcher.is_watching());
         assert!(!h.svc.status().unwrap().enabled);
+    }
+
+    #[test]
+    fn reconcile_pins_tracked_repos_up_front() {
+        let h = harness(enabled());
+        let pid = Uuid::new_v4();
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(pid));
+        h.resolver.add("/repo/b", Uuid::new_v4(), "b", None);
+
+        h.svc.reconcile().unwrap();
+
+        // Only the assigned repo is pinned; the unassigned one is left untouched.
+        assert_eq!(
+            h.switcher.pinned.lock().unwrap().as_slice(),
+            &[("/repo/a".to_string(), pid)]
+        );
+    }
+
+    #[test]
+    fn pin_repo_uses_rule_over_manual_assignment() {
+        let h = harness(enabled());
+        let manual = Uuid::new_v4();
+        let rule_profile = Uuid::new_v4();
+        h.resolver.add("/repo/a", Uuid::new_v4(), "a", Some(manual));
+        *h.rules.forced.lock().unwrap() = Some(rule_profile);
+
+        h.svc.pin_repo("/repo/a").unwrap();
+
+        assert_eq!(
+            h.switcher.pinned.lock().unwrap().as_slice(),
+            &[("/repo/a".to_string(), rule_profile)]
+        );
     }
 
     #[test]

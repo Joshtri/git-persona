@@ -4,4 +4,4 @@ import type { RuleMatch } from "./RuleMatch";
 /**
  * Aggregate figures for the dashboard widget.
  */
-export type RuleSummary = { active: number, disabled: number, last_match: RuleMatch | null, };
+export type RuleSummary = { active: number; disabled: number; last_match: RuleMatch | null };

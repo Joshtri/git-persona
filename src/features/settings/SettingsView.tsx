@@ -21,6 +21,9 @@ const schema = z.object({
   theme: z.enum(["Dark", "Light", "System"]),
   show_audit_log: z.boolean(),
   auto_scan_repos: z.boolean(),
+  launch_at_startup: z.boolean(),
+  start_minimized: z.boolean(),
+  close_to_tray: z.boolean(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -57,6 +60,9 @@ export function SettingsView() {
       theme: "Dark",
       show_audit_log: true,
       auto_scan_repos: false,
+      launch_at_startup: false,
+      start_minimized: false,
+      close_to_tray: false,
     },
   });
 
@@ -67,6 +73,9 @@ export function SettingsView() {
   const selectedTheme = watch("theme");
   const showAuditLog = watch("show_audit_log");
   const autoScanRepos = watch("auto_scan_repos");
+  const launchAtStartup = watch("launch_at_startup");
+  const startMinimized = watch("start_minimized");
+  const closeToTray = watch("close_to_tray");
 
   // Apply theme immediately on select change (before Save)
   useEffect(() => {
@@ -89,6 +98,10 @@ export function SettingsView() {
       show_audit_log: true,
       auto_scan_repos: false,
       smart_switching: DEFAULT_SMART,
+      onboarded: false,
+      launch_at_startup: false,
+      start_minimized: false,
+      close_to_tray: false,
     };
     await update({ ...base, ...values });
     toast("Settings saved", "success");
@@ -134,13 +147,25 @@ export function SettingsView() {
             />
           </SettingRow>
           <SettingRow label="Launch at login" description="Start GitPersona when you log in.">
-            <Switch checked={false} onCheckedChange={() => {}} disabled />
+            <Switch
+              checked={launchAtStartup}
+              onCheckedChange={(v) => setValue("launch_at_startup", v)}
+            />
           </SettingRow>
           <SettingRow
             label="Start minimized"
-            description="Open to system tray instead of main window."
+            description="Open hidden in the system tray instead of the main window."
           >
-            <Switch checked={false} onCheckedChange={() => {}} disabled />
+            <Switch
+              checked={startMinimized}
+              onCheckedChange={(v) => setValue("start_minimized", v)}
+            />
+          </SettingRow>
+          <SettingRow
+            label="Keep running in tray"
+            description="When you close the window, keep GitPersona running in the background so Smart Switching stays active."
+          >
+            <Switch checked={closeToTray} onCheckedChange={(v) => setValue("close_to_tray", v)} />
           </SettingRow>
         </div>
       </section>

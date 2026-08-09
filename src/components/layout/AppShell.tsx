@@ -2,6 +2,7 @@ import { AboutView } from "@/features/about";
 import { ActivityView } from "@/features/activity";
 import { CredentialsView } from "@/features/credentials";
 import { DashboardView } from "@/features/dashboard";
+import { OnboardingWizard } from "@/features/onboarding";
 import { CommandPalette } from "@/features/palette/CommandPalette";
 import { ProfilesView } from "@/features/profiles";
 import { ReposView } from "@/features/repos";
@@ -9,9 +10,11 @@ import { RulesView } from "@/features/rules";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { ConfirmSwitchDialog } from "@/features/smart-switch";
 import { SshView } from "@/features/ssh";
+import { UpdateDialog } from "@/features/updates/UpdateDialog";
 import { useHotkey } from "@/hooks/useHotkey";
 import { isMod } from "@/lib/keyboard";
 import { useViewStore } from "@/stores/view";
+import { AnnouncementBanner } from "./AnnouncementBanner";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { ToastRegion } from "./ToastRegion";
@@ -73,6 +76,7 @@ export function AppShell() {
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0">
         <Header />
+        <AnnouncementBanner />
         <ViewContainer>
           <ActiveView />
         </ViewContainer>
@@ -80,6 +84,8 @@ export function AppShell() {
 
       <CommandPalette />
       <ConfirmSwitchDialog />
+      <OnboardingWizard />
+      <UpdateDialog />
       <ToastRegion />
     </div>
   );

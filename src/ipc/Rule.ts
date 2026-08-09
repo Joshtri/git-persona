@@ -6,8 +6,16 @@ import type { RuleCondition } from "./RuleCondition";
  * decision layer: they only ever *select* a profile — execution stays in the
  * existing profile-apply pipeline.
  */
-export type Rule = { id: string, name: string, enabled: boolean, 
-/**
- * Lower number = higher priority. Evaluated ascending; first match wins.
- */
-priority: number, target_profile_id: string, condition: RuleCondition, created_at: string, updated_at: string, };
+export type Rule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /**
+   * Lower number = higher priority. Evaluated ascending; first match wins.
+   */
+  priority: number;
+  target_profile_id: string;
+  condition: RuleCondition;
+  created_at: string;
+  updated_at: string;
+};

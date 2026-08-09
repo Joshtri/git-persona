@@ -6,6 +6,14 @@ use crate::{
 use tauri::State;
 use uuid::Uuid;
 
+// #[utoipa::path(
+//     get,
+//     path = "/profiles",
+//     tag = "Profiles",
+//     responses(
+//         (status = 200, description = "List all profiles", body = [Profile])
+//     )
+// )]
 #[tauri::command]
 pub(crate) async fn profile_list(state: State<'_, AppState>) -> Result<Vec<Profile>, AppError> {
     state.profiles.list()

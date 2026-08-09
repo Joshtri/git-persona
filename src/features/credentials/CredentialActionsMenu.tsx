@@ -1,5 +1,13 @@
 import { Popover } from "@base-ui/react/popover";
-import { ArrowRightFromSquare, Copy, EllipsisVertical, Pencil, TrashBin } from "@gravity-ui/icons";
+import {
+  ArrowRightFromSquare,
+  Copy,
+  EllipsisVertical,
+  Eye,
+  Lock,
+  Pencil,
+  TrashBin,
+} from "@gravity-ui/icons";
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
@@ -15,7 +23,8 @@ interface Props {
 export function CredentialActionsMenu({ credential }: Props) {
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const { switchCredential, remove, setEditing } = useCredentialsStore();
+  const { switchCredential, remove, setEditing, setRevealing, setSettingPin } =
+    useCredentialsStore();
   const toast = useFeedbackStore((s) => s.toast);
 
   const run = (fn: () => void) => {
@@ -57,6 +66,35 @@ export function CredentialActionsMenu({ credential }: Props) {
               <Pencil className="size-3.5 text-(--color-muted)" aria-hidden="true" />
               Edit
             </Button>
+            {credential.has_pin ? (
+              <>
+                <Button
+                  variant="menu"
+                  size="menu"
+                  onClick={() => run(() => setRevealing(credential))}
+                >
+                  <Eye className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+                  Reveal token
+                </Button>
+                <Button
+                  variant="menu"
+                  size="menu"
+                  onClick={() => run(() => setSettingPin(credential))}
+                >
+                  <Lock className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+                  Change PIN
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="menu"
+                size="menu"
+                onClick={() => run(() => setSettingPin(credential))}
+              >
+                <Lock className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+                Set reveal PIN
+              </Button>
+            )}
             <Button variant="menu" size="menu" onClick={() => run(copyUsername)}>
               <Copy className="size-3.5 text-(--color-muted)" aria-hidden="true" />
               Copy username

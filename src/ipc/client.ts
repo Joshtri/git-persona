@@ -1,10 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   AppSettings,
   AuditEntry,
+  BootstrapData,
   Credential,
   Profile,
   Repo,
+  RepoGroup,
   Rule,
   RuleOperator,
   RulePreviewInput,
@@ -14,7 +17,16 @@ import type {
   SmartSwitchStatus,
   SshAlgorithm,
   SshKey,
+  SystemScan,
 } from "./types.gen";
+
+export async function openUrl(url: string): Promise<void> {
+  return openerOpenUrl(url);
+}
+
+export async function bootstrapFetch(): Promise<BootstrapData> {
+  return invoke<BootstrapData>("bootstrap_fetch");
+}
 
 export async function settingsGet(): Promise<AppSettings> {
   return invoke<AppSettings>("settings_get");
@@ -110,6 +122,30 @@ export async function repoReveal(id: string): Promise<void> {
   return invoke<void>("repo_reveal", { id });
 }
 
+export async function repoGroupList(): Promise<RepoGroup[]> {
+  return invoke<RepoGroup[]>("repo_group_list");
+}
+
+export async function repoGroupCreate(name: string, color: string | null): Promise<RepoGroup> {
+  return invoke<RepoGroup>("repo_group_create", { name, color });
+}
+
+export async function repoGroupUpdate(
+  id: string,
+  name: string,
+  color: string | null
+): Promise<RepoGroup> {
+  return invoke<RepoGroup>("repo_group_update", { id, name, color });
+}
+
+export async function repoGroupDelete(id: string): Promise<void> {
+  return invoke<void>("repo_group_delete", { id });
+}
+
+export async function repoSetGroup(id: string, groupId: string | null): Promise<Repo> {
+  return invoke<Repo>("repo_set_group", { id, groupId });
+}
+
 export async function sshList(): Promise<SshKey[]> {
   return invoke<SshKey[]>("ssh_list");
 }
@@ -178,9 +214,18 @@ export async function credentialCreate(
   profileId: string | null,
   host: string,
   username: string,
-  token: string
+  token: string,
+  pin: string | null
 ): Promise<Credential> {
-  return invoke<Credential>("credential_create", { profileId, host, username, token });
+  return invoke<Credential>("credential_create", { profileId, host, username, token, pin });
+}
+
+export async function credentialSetPin(id: string, pin: string): Promise<Credential> {
+  return invoke<Credential>("credential_set_pin", { id, pin });
+}
+
+export async function credentialReveal(id: string, pin: string): Promise<string> {
+  return invoke<string>("credential_reveal", { id, pin });
 }
 
 export async function credentialUpdate(
@@ -301,4 +346,32 @@ export async function smartSwitchConfirm(gitRoot: string): Promise<void> {
 
 export async function smartSwitchCancel(gitRoot: string): Promise<void> {
   return invoke<void>("smart_switch_cancel", { gitRoot });
+}
+
+export async function onboardingScan(): Promise<SystemScan> {
+  return invoke<SystemScan>("onboarding_scan");
+}
+
+export async function onboardingApply(
+  createProfile: boolean,
+  label: string,
+  name: string,
+  email: string,
+  signingKey: string | null,
+  color: string | null,
+  sshPaths: string[]
+): Promise<void> {
+  return invoke<void>("onboarding_apply", {
+    createProfile,
+    label,
+    name,
+    email,
+    signingKey,
+    color,
+    sshPaths,
+  });
+}
+
+export async function onboardingSkip(): Promise<void> {
+  return invoke<void>("onboarding_skip");
 }

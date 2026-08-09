@@ -15,6 +15,8 @@ import { AssignCredentialProfileMenu } from "./AssignCredentialProfileMenu";
 import { CreateCredentialDialog } from "./CreateCredentialDialog";
 import { CredentialActionsMenu } from "./CredentialActionsMenu";
 import { EditCredentialDialog } from "./EditCredentialDialog";
+import { RevealCredentialDialog } from "./RevealCredentialDialog";
+import { SetCredentialPinDialog } from "./SetCredentialPinDialog";
 
 function updatedLabel(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -131,6 +133,8 @@ export function CredentialsView() {
 
       <CreateCredentialDialog open={createOpen} onOpenChange={setCreateOpen} />
       <EditCredentialDialog />
+      <RevealCredentialDialog />
+      <SetCredentialPinDialog />
     </div>
   );
 }

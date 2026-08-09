@@ -1,4 +1,11 @@
-import { BranchesDown, Clock, Folder, Star, StarFill } from "@gravity-ui/icons";
+import {
+  BranchesDown,
+  Clock,
+  Folder,
+  Star,
+  StarFill,
+  TriangleExclamation,
+} from "@gravity-ui/icons";
 import type { Repo } from "@/ipc/types.gen";
 import { cn } from "@/lib/cn";
 import { useReposStore } from "@/stores/repos";
@@ -30,9 +37,18 @@ export function RepoCard({ repo }: Props) {
   const toggleFavorite = useReposStore((s) => s.toggleFavorite);
   const updated = timeAgo(repo.last_opened ?? repo.detected_at);
   const host = remoteHost(repo.remote_origin);
+  const missing = !repo.path_exists;
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 hover:bg-(--color-surface-2) transition-colors border-b border-(--color-border) last:border-b-0">
+    <div
+      className={cn(
+        "flex items-center gap-4 px-4 py-3 transition-colors border-b border-(--color-border) last:border-b-0",
+        missing
+          ? "border-l-2 border-l-(--color-warning) bg-(--color-warning)/5 hover:bg-(--color-warning)/10"
+          : "hover:bg-(--color-surface-2)"
+      )}
+      title={missing ? `Folder not found: ${repo.path}` : undefined}
+    >
       <button
         type="button"
         onClick={() => toggleFavorite(repo.id)}
@@ -56,8 +72,21 @@ export function RepoCard({ repo }: Props) {
         <div className="flex items-center gap-2 min-w-0">
           <Folder className="size-3.5 text-(--color-muted) shrink-0" aria-hidden="true" />
           <span className="text-sm font-medium text-(--color-fg) truncate">{repo.name}</span>
+          {missing && (
+            <span className="flex items-center gap-1 shrink-0 rounded-full bg-(--color-warning)/10 px-1.5 py-0.5 text-[10px] font-medium text-(--color-warning)">
+              <TriangleExclamation className="size-3" aria-hidden="true" />
+              Folder not found
+            </span>
+          )}
         </div>
-        <span className="text-xs text-(--color-muted) truncate font-mono">{repo.path}</span>
+        <span
+          className={cn(
+            "text-xs truncate font-mono",
+            missing ? "text-(--color-warning) line-through" : "text-(--color-muted)"
+          )}
+        >
+          {repo.path}
+        </span>
         {host && <span className="text-[10px] text-(--color-secondary) truncate">{host}</span>}
       </div>
 

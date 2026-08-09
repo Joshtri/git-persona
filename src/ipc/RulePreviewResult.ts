@@ -4,4 +4,4 @@ import type { RuleMatch } from "./RuleMatch";
 /**
  * The result of a preview evaluation.
  */
-export type RulePreviewResult = { matched: RuleMatch | null, };
+export type RulePreviewResult = { matched: RuleMatch | null };

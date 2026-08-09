@@ -1,1 +1,1 @@
-export {};
+export { OnboardingWizard } from "./OnboardingWizard";

@@ -34,6 +34,7 @@ export function CreateCredentialDialog({ open, onOpenChange }: Props) {
       username: "",
       token: "",
       profileId: "",
+      pin: "",
     },
   });
 
@@ -52,6 +53,7 @@ export function CreateCredentialDialog({ open, onOpenChange }: Props) {
       host: data.host,
       username: data.username.trim(),
       token: data.token,
+      pin: data.pin ? data.pin : null,
     });
     if (ok) {
       reset();
@@ -120,6 +122,24 @@ export function CreateCredentialDialog({ open, onOpenChange }: Props) {
               </p>
             </div>
           )}
+
+          <Field
+            label="Reveal PIN (optional)"
+            htmlFor="cred-pin"
+            error={errors.pin?.message}
+            hint="Set a PIN to view this token again later. Leave blank and the token can never be read back — only used to switch."
+          >
+            <Input
+              id="cred-pin"
+              type="password"
+              inputMode="numeric"
+              placeholder="e.g. 4–64 characters"
+              autoComplete="off"
+              className="font-mono text-xs"
+              error={!!errors.pin}
+              {...register("pin")}
+            />
+          </Field>
 
           <Field label="Assign to profile (optional)">
             <Select

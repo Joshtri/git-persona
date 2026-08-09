@@ -1,4 +1,4 @@
-import { Folder, MagnifierPlus } from "@gravity-ui/icons";
+import { Folder, FolderPlus, MagnifierPlus } from "@gravity-ui/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
@@ -12,7 +12,10 @@ import type { Repo } from "@/ipc/types.gen";
 import { cn } from "@/lib/cn";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
-import { RepoCard } from "./RepoCard";
+import { GroupFormDialog } from "./GroupFormDialog";
+import { RepoGroupSection } from "./RepoGroupSection";
+
+const UNGROUPED_KEY = "__ungrouped__";
 
 type SortKey = "recent" | "name" | "opened";
 type FilterKey = "all" | "favorites" | "assigned" | "unassigned";
@@ -67,10 +70,12 @@ function sortRepos(repos: Repo[], sort: SortKey): Repo[] {
 }
 
 export function ReposView() {
-  const { items, loading, scanning, progress, error, scan, fetch } = useReposStore();
+  const { items, groups, loading, scanning, progress, error, scan, fetch, openGroupDialog } =
+    useReposStore();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   // Reload persisted repos on open, and ensure profiles are loaded so each
   // repo's assigned-profile badge resolves to a label.
@@ -90,6 +95,35 @@ export function ReposView() {
     [items, filter, query, sort]
   );
 
+  // Only hide empty group sections while the user is actively narrowing the
+  // list; otherwise keep every group visible so it stays manageable.
+  const narrowing = query !== "" || filter !== "all";
+
+  const sections = useMemo(() => {
+    const result: { key: string; group: (typeof groups)[number] | null; repos: Repo[] }[] = [];
+    for (const group of groups) {
+      const groupRepos = visible.filter((r) => r.group_id === group.id);
+      if (narrowing && groupRepos.length === 0) continue;
+      result.push({ key: group.id, group, repos: groupRepos });
+    }
+    const ungrouped = visible.filter((r) => r.group_id == null);
+    if (ungrouped.length > 0 || (!narrowing && groups.length === 0)) {
+      result.push({ key: UNGROUPED_KEY, group: null, repos: ungrouped });
+    }
+    return result;
+  }, [groups, visible, narrowing]);
+
+  const toggle = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+
   const showScanning = scanning && items.length === 0;
 
   return (
@@ -99,10 +133,20 @@ export function ReposView() {
           <h1 className="text-lg font-semibold text-(--color-fg)">Repositories</h1>
           <Badge variant="default">{items.length}</Badge>
         </div>
-        <Button variant="primary" size="sm" onClick={scan} disabled={scanning}>
-          {scanning ? <Spinner size="sm" /> : <Folder className="size-3.5" aria-hidden="true" />}
-          {scanning ? "Scanning…" : "Scan folders"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => openGroupDialog({ editing: null, assignRepoId: null })}
+          >
+            <FolderPlus className="size-3.5" aria-hidden="true" />
+            New group
+          </Button>
+          <Button variant="primary" size="sm" onClick={scan} disabled={scanning}>
+            {scanning ? <Spinner size="sm" /> : <Folder className="size-3.5" aria-hidden="true" />}
+            {scanning ? "Scanning…" : "Scan folders"}
+          </Button>
+        </div>
       </div>
 
       {scanning && progress && (
@@ -154,12 +198,16 @@ export function ReposView() {
         ))}
       </div>
 
-      <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
-        {error ? (
+      {error ? (
+        <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
           <ErrorState error={error} onRetry={fetch} />
-        ) : loading || showScanning ? (
+        </div>
+      ) : loading || showScanning ? (
+        <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
           <LoadingState />
-        ) : items.length === 0 ? (
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
           <EmptyState
             icon={<Folder className="size-8" aria-hidden="true" />}
             title="No repositories yet"
@@ -171,12 +219,26 @@ export function ReposView() {
               </Button>
             }
           />
-        ) : visible.length === 0 ? (
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
           <NoResultsState query={query} />
-        ) : (
-          visible.map((repo) => <RepoCard key={repo.id} repo={repo} />)
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {sections.map((section) => (
+            <RepoGroupSection
+              key={section.key}
+              group={section.group}
+              repos={section.repos}
+              collapsed={collapsed.has(section.key)}
+              onToggle={() => toggle(section.key)}
+            />
+          ))}
+        </div>
+      )}
+
+      <GroupFormDialog />
     </div>
   );
 }

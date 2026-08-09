@@ -26,7 +26,7 @@ interface Props {
   editing?: Profile | null;
 }
 
-export function CreateProfileDialog({ open, onOpenChange, editing }: Props) {
+export function ProfileFormDialog({ open, onOpenChange, editing }: Props) {
   const { create, update } = useProfilesStore();
   const isEdit = !!editing;
 

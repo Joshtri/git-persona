@@ -16,13 +16,48 @@ pub(crate) async fn credential_create(
     host: String,
     username: String,
     token: String,
+    pin: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Credential, AppError> {
     // Own the secret in a zeroizing buffer for its whole (short) lifetime.
     let secret = Zeroizing::new(token);
-    state
+    let credential = state
         .credentials
-        .create(profile_id, &host, username, &secret)
+        .create(profile_id, &host, username, &secret)?;
+    // An optional PIN makes the token revealable later. Apply it as a second
+    // step; the credential itself is already safely stored if this is skipped.
+    match pin {
+        Some(pin) => {
+            let pin = Zeroizing::new(pin);
+            state.credentials.set_pin(credential.id, &pin)
+        }
+        None => Ok(credential),
+    }
+}
+
+/// Set (or replace) a credential's reveal PIN. Enables revealing the token for
+/// credentials that were created without one.
+#[tauri::command]
+pub(crate) async fn credential_set_pin(
+    id: Uuid,
+    pin: String,
+    state: State<'_, AppState>,
+) -> Result<Credential, AppError> {
+    let pin = Zeroizing::new(pin);
+    state.credentials.set_pin(id, &pin)
+}
+
+/// Read a credential's token back after verifying its PIN. Returns the raw token
+/// to the caller — the single command that ever surfaces secret material.
+#[tauri::command]
+pub(crate) async fn credential_reveal(
+    id: Uuid,
+    pin: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let pin = Zeroizing::new(pin);
+    let secret = state.credentials.reveal(id, &pin)?;
+    Ok(secret.as_str().to_owned())
 }
 
 #[tauri::command]

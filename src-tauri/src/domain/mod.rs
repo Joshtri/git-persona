@@ -1,7 +1,9 @@
 pub(crate) mod audit;
+pub(crate) mod bootstrap;
 pub(crate) mod credential;
 pub(crate) mod identity;
 pub(crate) mod identity_switch;
+pub(crate) mod onboarding;
 pub(crate) mod ports;
 pub(crate) mod profile;
 pub(crate) mod repo;

@@ -7,12 +7,11 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { NoResultsState } from "@/components/feedback/NoResultsState";
 import { SearchInput } from "@/components/search-input";
-// import { Badge, Button, SearchInput } from "@/components/ui";
 import type { Profile } from "@/ipc/types.gen";
 import { useProfilesStore } from "@/stores/profiles";
-import { CreateProfileDialog } from "./CreateProfileDialog";
 import { DeleteProfileDialog } from "./DeleteProfileDialog";
 import { ProfileCard } from "./ProfileCard";
+import { ProfileFormDialog } from "./ProfileFormDialog";
 
 export function ProfilesView() {
   const { items, activeProfileId, loading, error, fetch, apply } = useProfilesStore();
@@ -81,7 +80,8 @@ export function ProfilesView() {
         )}
       </div>
 
-      <CreateProfileDialog
+      <ProfileFormDialog
+        key={editTarget?.id ?? "new"}
         open={createOpen || !!editTarget}
         onOpenChange={(o) => {
           if (!o) {

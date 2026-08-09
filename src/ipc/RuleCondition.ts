@@ -6,4 +6,4 @@ import type { RuleSubject } from "./RuleSubject";
  * A single declarative predicate: does `subject` `operator` `value` hold for a
  * repository?
  */
-export type RuleCondition = { subject: RuleSubject, operator: RuleOperator, value: string, };
+export type RuleCondition = { subject: RuleSubject; operator: RuleOperator; value: string };

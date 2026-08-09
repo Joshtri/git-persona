@@ -45,6 +45,14 @@ export const credentialSchema = z.object({
   token: z.string().min(1, "Token is required").max(500),
   // "" means unassigned; any other value is a profile id.
   profileId: z.string().optional(),
+  // Optional reveal PIN. Blank = the token can never be read back. A set PIN
+  // (4–64 chars) gates a later reveal of the stored token.
+  pin: z
+    .string()
+    .refine((v) => v === "" || (v.length >= 4 && v.length <= 64), {
+      message: "PIN must be 4–64 characters",
+    })
+    .optional(),
 });
 
 export const credentialEditSchema = z.object({

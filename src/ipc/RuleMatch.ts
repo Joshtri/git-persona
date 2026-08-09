@@ -4,4 +4,4 @@
  * The outcome of a successful rule resolution. Carries display metadata only —
  * consumed by the preview, the dashboard summary, and the switching audit.
  */
-export type RuleMatch = { rule_id: string, rule_name: string, profile_id: string, reason: string, };
+export type RuleMatch = { rule_id: string; rule_name: string; profile_id: string; reason: string };

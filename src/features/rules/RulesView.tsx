@@ -11,11 +11,10 @@ import { Switch } from "@/components/switch";
 import type { Rule } from "@/ipc/types.gen";
 import { useProfilesStore } from "@/stores/profiles";
 import { useRulesStore } from "@/stores/rules";
-import { CreateRuleDialog } from "./CreateRuleDialog";
-import { EditRuleDialog } from "./EditRuleDialog";
 import { conditionSummary, SUBJECT_LABELS } from "./labels";
 import { PreviewRuleDialog } from "./PreviewRuleDialog";
 import { RuleActionsMenu } from "./RuleActionsMenu";
+import { RuleFormDialog } from "./RuleFormDialog";
 
 function matchesQuery(rule: Rule, q: string): boolean {
   if (q === "") return true;
@@ -35,6 +34,7 @@ export function RulesView() {
     fetch,
     createOpen,
     setCreateOpen,
+    editing,
     previewOpen,
     setPreviewOpen,
     setEnabled,
@@ -145,8 +145,7 @@ export function RulesView() {
         )}
       </div>
 
-      <CreateRuleDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <EditRuleDialog />
+      <RuleFormDialog key={editing?.id ?? (createOpen ? "new" : "closed")} />
       <PreviewRuleDialog open={previewOpen} onOpenChange={setPreviewOpen} />
     </div>
   );

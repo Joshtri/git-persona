@@ -1,7 +1,7 @@
 use crate::domain::{
     audit::AuditEntry,
     ports::{AuditSink, GitMetadataReader, RepoScanner, RepoStore},
-    repo::{Repo, ScanProgress},
+    repo::{Repo, RepoGroup, ScanProgress},
 };
 use crate::error::AppError;
 use chrono::Utc;
@@ -22,6 +22,13 @@ fn repo_name(git_root: &str) -> String {
         .map(|n| n.to_string_lossy().into_owned())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| git_root.to_string())
+}
+
+/// Refresh the derived `path_exists` flag from the filesystem. The stored value
+/// is only a snapshot; callers annotate every `Repo` before it reaches the UI.
+fn annotate_path(mut repo: Repo) -> Repo {
+    repo.path_exists = Path::new(&repo.path).exists();
+    repo
 }
 
 impl RepoService {
@@ -55,12 +62,18 @@ impl RepoService {
     }
 
     pub(crate) fn list(&self) -> Result<Vec<Repo>, AppError> {
-        self.store.load_all()
+        Ok(self
+            .store
+            .load_all()?
+            .into_iter()
+            .map(annotate_path)
+            .collect())
     }
 
     pub(crate) fn get(&self, id: Uuid) -> Result<Repo, AppError> {
         self.store
             .find(id)?
+            .map(annotate_path)
             .ok_or_else(|| AppError::NotFound(format!("repo {id}")))
     }
 
@@ -90,12 +103,19 @@ impl RepoService {
                     last_opened: None,
                     favorite: false,
                     detected_at: Utc::now(),
+                    group_id: None,
+                    path_exists: true,
                 };
                 self.store.save(&repo)?;
             }
         }
         self.log("repo.scan", None, None)?;
-        self.store.load_all()
+        Ok(self
+            .store
+            .load_all()?
+            .into_iter()
+            .map(annotate_path)
+            .collect())
     }
 
     pub(crate) fn refresh(&self, id: Uuid) -> Result<Repo, AppError> {
@@ -141,6 +161,93 @@ impl RepoService {
         self.store.save(&repo)?;
         Ok(repo)
     }
+
+    // ---- Groups ("ecosystems") ------------------------------------------
+
+    pub(crate) fn list_groups(&self) -> Result<Vec<RepoGroup>, AppError> {
+        self.store.load_groups()
+    }
+
+    fn find_group(&self, id: Uuid) -> Result<RepoGroup, AppError> {
+        self.store
+            .load_groups()?
+            .into_iter()
+            .find(|g| g.id == id)
+            .ok_or_else(|| AppError::NotFound(format!("repo group {id}")))
+    }
+
+    /// Validate and normalize a group name, rejecting blanks and duplicates
+    /// (case-insensitive), excluding `exclude` for renames.
+    fn validate_group_name(&self, name: &str, exclude: Option<Uuid>) -> Result<String, AppError> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("group name is required".into()));
+        }
+        if trimmed.chars().count() > 60 {
+            return Err(AppError::Validation("group name is too long".into()));
+        }
+        let clash = self
+            .store
+            .load_groups()?
+            .into_iter()
+            .any(|g| Some(g.id) != exclude && g.name.eq_ignore_ascii_case(trimmed));
+        if clash {
+            return Err(AppError::Conflict(format!(
+                "a group named \"{trimmed}\" already exists"
+            )));
+        }
+        Ok(trimmed.to_string())
+    }
+
+    pub(crate) fn create_group(
+        &self,
+        name: &str,
+        color: Option<String>,
+    ) -> Result<RepoGroup, AppError> {
+        let name = self.validate_group_name(name, None)?;
+        let group = RepoGroup {
+            id: Uuid::new_v4(),
+            name,
+            color,
+            created_at: Utc::now(),
+        };
+        self.store.save_group(&group)?;
+        self.log("repo.group.create", None, None)?;
+        Ok(group)
+    }
+
+    pub(crate) fn update_group(
+        &self,
+        id: Uuid,
+        name: &str,
+        color: Option<String>,
+    ) -> Result<RepoGroup, AppError> {
+        let mut group = self.find_group(id)?;
+        group.name = self.validate_group_name(name, Some(id))?;
+        group.color = color;
+        self.store.save_group(&group)?;
+        Ok(group)
+    }
+
+    /// Delete a group; the store detaches any repos that referenced it.
+    pub(crate) fn delete_group(&self, id: Uuid) -> Result<(), AppError> {
+        self.find_group(id)?;
+        self.store.delete_group(id)?;
+        self.log("repo.group.delete", None, None)?;
+        Ok(())
+    }
+
+    /// Move a repo into a group, or out of any group with `None`.
+    pub(crate) fn set_group(&self, id: Uuid, group_id: Option<Uuid>) -> Result<Repo, AppError> {
+        if let Some(gid) = group_id {
+            self.find_group(gid)?;
+        }
+        let mut repo = self.get(id)?;
+        repo.group_id = group_id;
+        self.store.save(&repo)?;
+        self.log("repo.group.assign", Some(repo.path.clone()), None)?;
+        Ok(repo)
+    }
 }
 
 #[cfg(test)]
@@ -158,11 +265,13 @@ mod tests {
 
     struct MockRepoStore {
         repos: Mutex<Vec<Repo>>,
+        groups: Mutex<Vec<RepoGroup>>,
     }
     impl MockRepoStore {
         fn new() -> Self {
             Self {
                 repos: Mutex::new(vec![]),
+                groups: Mutex::new(vec![]),
             }
         }
     }
@@ -203,6 +312,33 @@ mod tests {
             rs.retain(|r| r.id != id);
             if rs.len() == before {
                 return Err(AppError::NotFound(format!("repo {id}")));
+            }
+            Ok(())
+        }
+        fn load_groups(&self) -> Result<Vec<RepoGroup>, AppError> {
+            Ok(self.groups.lock().unwrap().clone())
+        }
+        fn save_group(&self, group: &RepoGroup) -> Result<(), AppError> {
+            let mut gs = self.groups.lock().unwrap();
+            if let Some(pos) = gs.iter().position(|g| g.id == group.id) {
+                gs[pos] = group.clone();
+            } else {
+                gs.push(group.clone());
+            }
+            Ok(())
+        }
+        fn delete_group(&self, id: Uuid) -> Result<(), AppError> {
+            let mut gs = self.groups.lock().unwrap();
+            let before = gs.len();
+            gs.retain(|g| g.id != id);
+            if gs.len() == before {
+                return Err(AppError::NotFound(format!("repo group {id}")));
+            }
+            drop(gs);
+            for repo in self.repos.lock().unwrap().iter_mut() {
+                if repo.group_id == Some(id) {
+                    repo.group_id = None;
+                }
             }
             Ok(())
         }
@@ -352,6 +488,69 @@ mod tests {
             .unwrap()
             .iter()
             .any(|e| e.action == "repo.remove"));
+    }
+
+    #[test]
+    fn create_group_and_assign_repo() {
+        let (svc, store, _) = make(vec!["/x/alpha"], meta("main"));
+        svc.scan(&["/x".to_string()], &noop()).unwrap();
+        let repo_id = store.load_all().unwrap()[0].id;
+        let group = svc
+            .create_group("Dolphin Modules", Some("#10b981".into()))
+            .unwrap();
+        assert_eq!(group.name, "Dolphin Modules");
+
+        let repo = svc.set_group(repo_id, Some(group.id)).unwrap();
+        assert_eq!(repo.group_id, Some(group.id));
+        // Unassign back to ungrouped.
+        assert_eq!(svc.set_group(repo_id, None).unwrap().group_id, None);
+    }
+
+    #[test]
+    fn create_group_rejects_blank_and_duplicate() {
+        let (svc, _, _) = make(vec![], meta("main"));
+        assert!(matches!(
+            svc.create_group("  ", None).unwrap_err(),
+            AppError::Validation(_)
+        ));
+        svc.create_group("Dolphin", None).unwrap();
+        assert!(matches!(
+            svc.create_group("dolphin", None).unwrap_err(),
+            AppError::Conflict(_)
+        ));
+    }
+
+    #[test]
+    fn set_group_rejects_unknown_group() {
+        let (svc, store, _) = make(vec!["/x/alpha"], meta("main"));
+        svc.scan(&["/x".to_string()], &noop()).unwrap();
+        let repo_id = store.load_all().unwrap()[0].id;
+        let err = svc.set_group(repo_id, Some(Uuid::new_v4())).unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn delete_group_detaches_repos() {
+        let (svc, store, _) = make(vec!["/x/alpha"], meta("main"));
+        svc.scan(&["/x".to_string()], &noop()).unwrap();
+        let repo_id = store.load_all().unwrap()[0].id;
+        let group = svc.create_group("Dolphin", None).unwrap();
+        svc.set_group(repo_id, Some(group.id)).unwrap();
+
+        svc.delete_group(group.id).unwrap();
+        assert!(svc.list_groups().unwrap().is_empty());
+        assert_eq!(store.load_all().unwrap()[0].group_id, None);
+    }
+
+    #[test]
+    fn update_group_renames_and_recolors() {
+        let (svc, _, _) = make(vec![], meta("main"));
+        let group = svc.create_group("Old", Some("#111111".into())).unwrap();
+        let updated = svc
+            .update_group(group.id, "New", Some("#222222".into()))
+            .unwrap();
+        assert_eq!(updated.name, "New");
+        assert_eq!(updated.color.as_deref(), Some("#222222"));
     }
 
     #[test]

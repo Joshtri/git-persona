@@ -6,4 +6,12 @@ import type { SwitchStatus } from "./SwitchStatus";
  * "last automatic switch" for the dashboard. Carries only display metadata —
  * never secrets, tokens, or key material.
  */
-export type SwitchEvent = { status: SwitchStatus, git_root: string, repo_id: string | null, repo_name: string | null, profile_id: string | null, profile_label: string | null, at: string, };
+export type SwitchEvent = {
+  status: SwitchStatus;
+  git_root: string;
+  repo_id: string | null;
+  repo_name: string | null;
+  profile_id: string | null;
+  profile_label: string | null;
+  at: string;
+};

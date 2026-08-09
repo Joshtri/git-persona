@@ -14,6 +14,7 @@ interface DialogContentProps {
   description?: string;
   children: ReactNode;
   className?: string;
+  hideClose?: boolean;
 }
 
 function Root({ open, onOpenChange, children }: DialogProps) {
@@ -28,7 +29,7 @@ function Trigger({ children }: { children: ReactNode }) {
   return <BaseDialog.Trigger render={<span />}>{children}</BaseDialog.Trigger>;
 }
 
-function Content({ title, description, children, className }: DialogContentProps) {
+function Content({ title, description, children, className, hideClose }: DialogContentProps) {
   return (
     <BaseDialog.Portal>
       <BaseDialog.Backdrop className="fixed inset-0  bg-black/75 z-40 animate-[fade-in_150ms_ease]" />
@@ -53,12 +54,14 @@ function Content({ title, description, children, className }: DialogContentProps
               </BaseDialog.Description>
             )}
           </div>
-          <BaseDialog.Close
-            className="text-(--color-muted) hover:text-(--color-fg) transition-colors mt-0.5"
-            aria-label="Close"
-          >
-            <Xmark className="size-4" />
-          </BaseDialog.Close>
+          {!hideClose && (
+            <BaseDialog.Close
+              className="text-(--color-muted) hover:text-(--color-fg) transition-colors mt-0.5"
+              aria-label="Close"
+            >
+              <Xmark className="size-4" />
+            </BaseDialog.Close>
+          )}
         </div>
         {children}
       </BaseDialog.Popup>

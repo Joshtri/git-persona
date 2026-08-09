@@ -1,6 +1,6 @@
 [package]
 name = "gitswitch-desktop"
-version = "0.1.0"
+version = "0.8.0"
 description = "GitPersona — Developer Identity Manager"
 authors = []
 edition = "2021"
@@ -15,7 +15,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri       = { version = "2", features = [] }
+utoipa = { version = "5.4", features = ["macros", "axum_extras", "uuid"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
+tauri       = { version = "2", features = ["tray-icon"] }
 serde       = { version = "1", features = ["derive"] }
 serde_json  = "1"
 thiserror   = "2"
@@ -23,17 +25,23 @@ ts-rs       = { version = "11", features = ["serde-compat", "uuid-impl", "chrono
 uuid        = { version = "1", features = ["v4", "serde"] }
 chrono      = { version = "0.4", features = ["serde", "clock"], default-features = false }
 gix-config  = "0.45"
+bstr        = "1.12"
 dirs-next   = "2"
 sha2        = "0.10"
 walkdir     = "2"
-tokio       = { version = "1", features = ["sync"] }
+tokio       = { version = "1", features = ["sync", "net", "rt-multi-thread", "macros"] }
+axum        = "0.8"
 notify-debouncer-mini = "0.4"
 ssh-key     = { version = "0.6", features = ["std", "alloc", "ed25519", "rsa"] }
 rand_core   = { version = "0.6", features = ["getrandom"] }
 zeroize     = "1"
+argon2      = "0.5"
 tauri-plugin-store  = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-autostart = "2"
+reqwest           = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+dotenvy           = "0.15"
 
 # Windows Credential Manager access (native Win32 CredRead/Write/Delete). Only
 # compiled on Windows; other platforms use the no-op vault fallback.

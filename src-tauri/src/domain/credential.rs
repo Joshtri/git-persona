@@ -38,6 +38,31 @@ pub(crate) fn is_supported_host(host: &str) -> bool {
     SUPPORTED_HOSTS.contains(&host)
 }
 
+/// Split an HTTPS remote URL into `(host, path)` exactly as Git passes the path
+/// to a credential helper when `useHttpPath` is on: no leading slash, no
+/// trailing slash, user-info stripped, host lowercased. `None` for non-HTTPS
+/// URLs (SSH, SCP-like, `file://`) and for URLs without a repository path.
+pub(crate) fn parse_https_remote(remote: &str) -> Option<(String, String)> {
+    let rest = remote
+        .strip_prefix("https://")
+        .or_else(|| remote.strip_prefix("http://"))?;
+    let mut segments: Vec<&str> = rest.split('/').collect();
+    if segments.len() < 3 {
+        return None;
+    }
+    let host = segments.remove(0);
+    let host = host.rsplit('@').next().unwrap_or(host);
+    let host = host.split(':').next().unwrap_or(host);
+    if host.is_empty() {
+        return None;
+    }
+    let path = segments.join("/").trim_end_matches('/').to_string();
+    if path.is_empty() {
+        return None;
+    }
+    Some((host.to_ascii_lowercase(), path))
+}
+
 /// Metadata for a stored HTTPS Git credential.
 ///
 /// Holds **references and metadata only**. The secret lives exclusively in the
@@ -53,6 +78,12 @@ pub(crate) struct Credential {
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
     pub(crate) last_used: Option<DateTime<Utc>>,
+    /// Whether a reveal PIN is set. `true` means the token can be read back via
+    /// the PIN-gated reveal flow. The PIN's Argon2 hash lives in the credential
+    /// store's side map, never here and never on the wire. `#[serde(default)]`
+    /// keeps pre-PIN records deserializable.
+    #[serde(default)]
+    pub(crate) has_pin: bool,
 }
 
 /// The full prior contents of a vault slot (identified by its target string),

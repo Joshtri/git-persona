@@ -1,4 +1,9 @@
-use crate::{domain::repo::Repo, error::AppError, state::AppState};
+use crate::{
+    domain::repo::{Repo, RepoGroup},
+    error::AppError,
+    state::AppState,
+};
+use std::path::Path;
 use tauri::{Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
@@ -47,7 +52,19 @@ pub(crate) async fn repo_assign_profile(
     profile_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<Repo, AppError> {
-    state.repos.assign_profile(id, profile_id)
+    let repo = state.repos.assign_profile(id, profile_id)?;
+    // Pin the resolved identity (author + path-scoped HTTPS credential) into the
+    // repo's local Git config right away, so the correct author and account are
+    // present before the user's next commit/pull rather than a step late.
+    // Best-effort: a pin failure must not fail the assignment.
+    if profile_id.is_some() {
+        let _ = state.identity_switch.pin_repo(&repo.git_root);
+    } else {
+        // Un-assigning drops the per-repo credential and returns the repo to the
+        // globally active credential.
+        let _ = state.profiles.unpin_local(Path::new(&repo.git_root));
+    }
+    Ok(repo)
 }
 
 #[tauri::command]
@@ -69,4 +86,47 @@ pub(crate) async fn repo_reveal(
     app.opener()
         .reveal_item_in_dir(&repo.path)
         .map_err(|e| AppError::Io(e.to_string()))
+}
+
+#[tauri::command]
+pub(crate) async fn repo_group_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<RepoGroup>, AppError> {
+    state.repos.list_groups()
+}
+
+#[tauri::command]
+pub(crate) async fn repo_group_create(
+    name: String,
+    color: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<RepoGroup, AppError> {
+    state.repos.create_group(&name, color)
+}
+
+#[tauri::command]
+pub(crate) async fn repo_group_update(
+    id: Uuid,
+    name: String,
+    color: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<RepoGroup, AppError> {
+    state.repos.update_group(id, &name, color)
+}
+
+#[tauri::command]
+pub(crate) async fn repo_group_delete(
+    id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    state.repos.delete_group(id)
+}
+
+#[tauri::command]
+pub(crate) async fn repo_set_group(
+    id: Uuid,
+    group_id: Option<Uuid>,
+    state: State<'_, AppState>,
+) -> Result<Repo, AppError> {
+    state.repos.set_group(id, group_id)
 }

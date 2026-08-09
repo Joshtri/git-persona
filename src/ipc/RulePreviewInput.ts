@@ -4,4 +4,4 @@
  * Input for the preview command — the user describes a hypothetical repository
  * and sees which rule (if any) would match. Never triggers a switch.
  */
-export type RulePreviewInput = { path: string, name: string, remote_url: string | null, };
+export type RulePreviewInput = { path: string; name: string; remote_url: string | null };

@@ -1,9 +1,10 @@
 use crate::domain::{
     audit::AuditEntry,
     credential::{Credential, CredentialTxn, Secret, VaultSnapshot},
+    identity::Identity,
     identity_switch::ResolvedRepo,
     profile::Profile,
-    repo::{Repo, RepoMetadata, ScanProgress},
+    repo::{Repo, RepoGroup, RepoMetadata, ScanProgress},
     rule::{EvaluationContext, Rule, RuleMatch},
     settings::AppSettings,
     ssh::{GeneratedKey, SshAlgorithm, SshConfigEntry, SshKey, SshKeyMetadata},
@@ -20,6 +21,26 @@ pub(crate) trait GitConfigBackend: Send + Sync {
     fn set_global_name(&self, name: &str) -> Result<(), AppError>;
     fn set_global_email(&self, email: &str) -> Result<(), AppError>;
     fn set_global_signing_key(&self, key: Option<&str>) -> Result<(), AppError>;
+
+    /// Write `name`/`email`/`signingkey` into the repository's **local** config
+    /// (`<git-dir>/config`). Git reads local config with higher precedence than
+    /// the global file and resolves it at commit time, so pinning it here makes
+    /// the correct identity present *before* a commit — the piece that removes
+    /// the one-commit lag of purely reactive switching.
+    fn set_local_identity(&self, git_root: &Path, identity: &Identity) -> Result<(), AppError>;
+
+    /// Enable (`true`) or remove (`false`) path-scoped credential lookups for
+    /// `host` in the repository's local config
+    /// (`credential.https://<host>.useHttpPath`). With it enabled, Git passes
+    /// the full remote URL path to the credential helper, which is what lets a
+    /// repository authenticate as its assigned profile over HTTPS even while a
+    /// different profile is globally active.
+    fn set_local_use_http_path(
+        &self,
+        git_root: &Path,
+        host: &str,
+        enabled: bool,
+    ) -> Result<(), AppError>;
 }
 
 pub(crate) trait ProfileStore: Send + Sync {
@@ -44,6 +65,10 @@ pub(crate) trait RepoStore: Send + Sync {
     fn find_by_git_root(&self, git_root: &str) -> Result<Option<Repo>, AppError>;
     fn save(&self, repo: &Repo) -> Result<(), AppError>;
     fn delete(&self, id: Uuid) -> Result<(), AppError>;
+    /// User-defined repository groups ("ecosystems"), in stored order.
+    fn load_groups(&self) -> Result<Vec<RepoGroup>, AppError>;
+    fn save_group(&self, group: &RepoGroup) -> Result<(), AppError>;
+    fn delete_group(&self, id: Uuid) -> Result<(), AppError>;
 }
 
 /// Persistence for [`Rule`] definitions. Mirrors the other Tauri-store adapters.
@@ -133,7 +158,12 @@ pub(crate) trait CredentialStore: Send + Sync {
     /// The credential a profile owns for a host, if any (enforces one-per-host).
     fn find_by_host(&self, profile_id: Uuid, host: &str) -> Result<Option<Credential>, AppError>;
     fn save(&self, credential: &Credential) -> Result<(), AppError>;
+    /// Remove a credential's metadata and any stored reveal-PIN hash.
     fn delete(&self, id: Uuid) -> Result<(), AppError>;
+    /// Store the Argon2 hash of a credential's reveal PIN in the side map.
+    fn save_pin(&self, id: Uuid, hash: &str) -> Result<(), AppError>;
+    /// The stored Argon2 PIN hash for a credential, or `None` if no PIN is set.
+    fn load_pin(&self, id: Uuid) -> Result<Option<String>, AppError>;
 }
 
 /// The OS secure credential storage (Windows Credential Manager today; macOS
@@ -158,6 +188,12 @@ pub(crate) trait CredentialVault: Send + Sync {
     /// Used by the frontend phase to surface the active credential per host.
     #[allow(dead_code)]
     fn username(&self, target: &str) -> Result<Option<String>, AppError>;
+
+    /// Read back the secret stored at `target`, or `None` if absent. Unlike every
+    /// other read path this returns the secret to the caller — it exists solely
+    /// for the PIN-gated reveal flow and must never be called without a prior
+    /// successful PIN check.
+    fn reveal(&self, target: &str) -> Result<Option<Secret>, AppError>;
 
     /// Copy the secret at `from` into `to` under `username`, keeping the secret
     /// inside the vault. Used to promote a profile's backing credential onto the
@@ -184,6 +220,17 @@ pub(crate) trait ProfileCredentialSync: Send + Sync {
 
     /// Undo a previously returned switch by restoring its snapshots.
     fn rollback(&self, txn: CredentialTxn) -> Result<(), AppError>;
+
+    /// Promote the profile's credential for `host` onto the **path-scoped** Git
+    /// target (`git:<scheme>://<host>/<path>`), so a single repository can
+    /// authenticate as that profile regardless of which profile is globally
+    /// active. Returns whether a credential was actually pinned (`false` when
+    /// the profile owns no credential for `host`).
+    fn pin_path(&self, profile_id: Uuid, host: &str, path: &str) -> Result<bool, AppError>;
+
+    /// Remove the path-scoped Git credential for `host`/`path`, returning the
+    /// repository to the globally active credential.
+    fn unpin_path(&self, host: &str, path: &str) -> Result<(), AppError>;
 }
 
 // ---- Smart Identity Switching (Sprint 6) --------------------------------
@@ -232,6 +279,9 @@ pub(crate) trait IdentitySwitcher: Send + Sync {
     fn active_profile_id(&self) -> Result<Option<Uuid>, AppError>;
     fn profile_label(&self, id: Uuid) -> Result<Option<String>, AppError>;
     fn apply(&self, profile_id: Uuid) -> Result<(), AppError>;
+    /// Pin `profile_id`'s identity into the repository at `git_root`'s local Git
+    /// config, so a commit there reads the right author before it is written.
+    fn apply_local(&self, git_root: &str, profile_id: Uuid) -> Result<(), AppError>;
 }
 
 /// Sink for the orchestrator's observable side effects: switch notifications and

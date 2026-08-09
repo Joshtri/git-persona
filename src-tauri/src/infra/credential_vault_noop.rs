@@ -28,6 +28,10 @@ impl CredentialVault for NoopCredentialVault {
         Ok(None)
     }
 
+    fn reveal(&self, _target: &str) -> Result<Option<Secret>, AppError> {
+        Err(unsupported())
+    }
+
     fn promote(&self, _from: &str, _to: &str, _username: &str) -> Result<VaultSnapshot, AppError> {
         Err(unsupported())
     }

@@ -2,9 +2,34 @@
 import type { SmartSwitchingSettings } from "./SmartSwitchingSettings";
 import type { Theme } from "./Theme";
 
-export type AppSettings = { theme: Theme, show_audit_log: boolean, auto_scan_repos: boolean, 
-/**
- * Smart Identity Switching (Sprint 6). `#[serde(default)]` keeps settings
- * files written before this field was introduced loadable.
- */
-smart_switching: SmartSwitchingSettings, };
+export type AppSettings = {
+  theme: Theme;
+  show_audit_log: boolean;
+  auto_scan_repos: boolean;
+  /**
+   * Smart Identity Switching (Sprint 6). `#[serde(default)]` keeps settings
+   * files written before this field was introduced loadable.
+   */
+  smart_switching: SmartSwitchingSettings;
+  /**
+   * `true` once the first-run onboarding wizard has been completed or skipped.
+   * `#[serde(default)]` (to `false`) makes existing users see onboarding once,
+   * then keeps them from being prompted again.
+   */
+  onboarded: boolean;
+  /**
+   * Register `GitPersona` to start automatically when the user logs in.
+   * Applied by (de)registering the OS autostart entry when settings are saved.
+   */
+  launch_at_startup: boolean;
+  /**
+   * Start hidden in the system tray instead of showing the main window. Also
+   * implied when the app is launched by the autostart entry (`--hidden`).
+   */
+  start_minimized: boolean;
+  /**
+   * Keep running in the tray when the main window is closed, instead of
+   * quitting, so Smart Switching keeps watching in the background.
+   */
+  close_to_tray: boolean;
+};

@@ -7,4 +7,20 @@ import type { Protocol } from "./Protocol";
  * Holds **references and metadata only**. The secret lives exclusively in the
  * OS credential vault (Windows Credential Manager) and is never a field here.
  */
-export type Credential = { id: string, profile_id: string | null, host: string, protocol: Protocol, username: string, created_at: string, updated_at: string, last_used: string | null, };
+export type Credential = {
+  id: string;
+  profile_id: string | null;
+  host: string;
+  protocol: Protocol;
+  username: string;
+  created_at: string;
+  updated_at: string;
+  last_used: string | null;
+  /**
+   * Whether a reveal PIN is set. `true` means the token can be read back via
+   * the PIN-gated reveal flow. The PIN's Argon2 hash lives in the credential
+   * store's side map, never here and never on the wire. `#[serde(default)]`
+   * keeps pre-PIN records deserializable.
+   */
+  has_pin: boolean;
+};

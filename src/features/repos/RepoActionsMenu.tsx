@@ -1,5 +1,13 @@
 import { Popover } from "@base-ui/react/popover";
-import { ArrowsRotateRight, Copy, EllipsisVertical, FolderOpen, TrashBin } from "@gravity-ui/icons";
+import {
+  ArrowsRotateRight,
+  Check,
+  Copy,
+  EllipsisVertical,
+  FolderOpen,
+  Plus,
+  TrashBin,
+} from "@gravity-ui/icons";
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
@@ -14,7 +22,7 @@ interface Props {
 export function RepoActionsMenu({ repo }: Props) {
   const [open, setOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const { refresh, remove, reveal } = useReposStore();
+  const { refresh, remove, reveal, groups, setGroup, openGroupDialog } = useReposStore();
   const toast = useFeedbackStore((s) => s.toast);
 
   const run = (fn: () => void) => {
@@ -54,6 +62,50 @@ export function RepoActionsMenu({ repo }: Props) {
               <ArrowsRotateRight className="size-3.5 text-(--color-muted)" aria-hidden="true" />
               Refresh metadata
             </Button>
+
+            <div className="my-1 h-px bg-(--color-border)" />
+            <p className="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-(--color-muted)">
+              Move to group
+            </p>
+            <div className="max-h-44 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => run(() => setGroup(repo.id, null))}
+                className="flex w-full items-center justify-between gap-2 rounded-(--radius-sm) px-2.5 py-1.5 text-left text-xs text-(--color-secondary) hover:bg-(--color-surface-2)"
+              >
+                Ungrouped
+                {repo.group_id == null && <Check className="size-3.5" aria-hidden="true" />}
+              </button>
+              {groups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => run(() => setGroup(repo.id, group.id))}
+                  className="flex w-full items-center justify-between gap-2 rounded-(--radius-sm) px-2.5 py-1.5 text-left text-xs text-(--color-fg) hover:bg-(--color-surface-2)"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: group.color ?? "#6366f1" }}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{group.name}</span>
+                  </span>
+                  {repo.group_id === group.id && (
+                    <Check className="size-3.5 shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="menu"
+              size="menu"
+              onClick={() => run(() => openGroupDialog({ editing: null, assignRepoId: repo.id }))}
+            >
+              <Plus className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+              New group…
+            </Button>
+
             <div className="my-1 h-px bg-(--color-border)" />
             <Button
               variant="menu-danger"

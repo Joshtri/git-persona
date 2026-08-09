@@ -23,6 +23,10 @@ const defaults: AppSettings = {
     confirm_before_switch: false,
     start_on_launch: false,
   },
+  onboarded: false,
+  launch_at_startup: false,
+  start_minimized: false,
+  close_to_tray: false,
 };
 
 export const useSettingsStore = create<SettingsStore>((set) => ({

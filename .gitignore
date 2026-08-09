@@ -1,3 +1,6 @@
+# Local environment overrides (never commit — contains dev-only secrets/URLs)
+.env
+
 # Logs
 logs
 *.log
@@ -35,3 +38,4 @@ src-tauri/bindings
 /playwright/.auth/
 .mcp.json
 CLAUDE.md
+docs

@@ -13,6 +13,10 @@ export const mockSettings: AppSettings = {
     confirm_before_switch: false,
     start_on_launch: false,
   },
+  onboarded: true,
+  launch_at_startup: false,
+  start_minimized: false,
+  close_to_tray: false,
 };
 
 const mockSmartStatus = {
@@ -27,6 +31,14 @@ const mockSmartStatus = {
 vi.mock("@/ipc/client", () => ({
   settingsGet: vi.fn().mockResolvedValue(mockSettings),
   settingsSet: vi.fn().mockImplementation(async (s: AppSettings) => s),
+  onboardingScan: vi.fn().mockResolvedValue({
+    identity: null,
+    ssh_keys: [],
+    credentials: [],
+    already_onboarded: true,
+  }),
+  onboardingApply: vi.fn().mockResolvedValue(undefined),
+  onboardingSkip: vi.fn().mockResolvedValue(undefined),
   profileList: vi.fn().mockResolvedValue([]),
   profileCreate: vi.fn().mockRejectedValue({ code: "NOT_IMPLEMENTED", message: "not implemented" }),
   profileDelete: vi.fn().mockRejectedValue({ code: "NOT_IMPLEMENTED", message: "not implemented" }),

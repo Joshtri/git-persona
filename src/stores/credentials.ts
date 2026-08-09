@@ -5,6 +5,8 @@ import {
   credentialDelete,
   credentialList,
   credentialOpenManager,
+  credentialReveal,
+  credentialSetPin,
   credentialSwitch,
   credentialUpdate,
 } from "@/ipc";
@@ -18,7 +20,10 @@ export interface CreateCredentialInput {
   host: string;
   username: string;
   token: string;
+  pin: string | null;
 }
+
+export type RevealResult = { ok: true; token: string } | { ok: false; message: string };
 
 interface CredentialsStore {
   items: Credential[];
@@ -26,10 +31,16 @@ interface CredentialsStore {
   error: AppError | null;
   createOpen: boolean;
   editing: Credential | null;
+  revealing: Credential | null;
+  settingPin: Credential | null;
   setCreateOpen: (open: boolean) => void;
   setEditing: (credential: Credential | null) => void;
+  setRevealing: (credential: Credential | null) => void;
+  setSettingPin: (credential: Credential | null) => void;
   fetch: () => Promise<void>;
   create: (input: CreateCredentialInput) => Promise<boolean>;
+  setPin: (id: string, pin: string) => Promise<boolean>;
+  reveal: (id: string, pin: string) => Promise<RevealResult>;
   update: (id: string, username: string, token: string | null) => Promise<boolean>;
   assignProfile: (id: string, profileId: string | null) => Promise<void>;
   switchCredential: (id: string) => Promise<void>;
@@ -43,9 +54,13 @@ export const useCredentialsStore = create<CredentialsStore>((set, get) => ({
   error: null,
   createOpen: false,
   editing: null,
+  revealing: null,
+  settingPin: null,
 
   setCreateOpen: (open) => set({ createOpen: open }),
   setEditing: (credential) => set({ editing: credential }),
+  setRevealing: (credential) => set({ revealing: credential }),
+  setSettingPin: (credential) => set({ settingPin: credential }),
 
   fetch: async () => {
     set({ loading: true, error: null });
@@ -59,7 +74,7 @@ export const useCredentialsStore = create<CredentialsStore>((set, get) => ({
 
   create: async (input) => {
     try {
-      await credentialCreate(input.profileId, input.host, input.username, input.token);
+      await credentialCreate(input.profileId, input.host, input.username, input.token, input.pin);
       await get().fetch();
       useFeedbackStore.getState().toast("Credential created", "success");
       useActivityStore.getState().fetch();
@@ -67,6 +82,27 @@ export const useCredentialsStore = create<CredentialsStore>((set, get) => ({
     } catch (e) {
       useFeedbackStore.getState().toast(toAppError(e).message, "error");
       return false;
+    }
+  },
+
+  setPin: async (id, pin) => {
+    try {
+      await credentialSetPin(id, pin);
+      await get().fetch();
+      useFeedbackStore.getState().toast("Reveal PIN set", "success");
+      return true;
+    } catch (e) {
+      useFeedbackStore.getState().toast(toAppError(e).message, "error");
+      return false;
+    }
+  },
+
+  reveal: async (id, pin) => {
+    try {
+      const token = await credentialReveal(id, pin);
+      return { ok: true, token };
+    } catch (e) {
+      return { ok: false, message: toAppError(e).message };
     }
   },
 

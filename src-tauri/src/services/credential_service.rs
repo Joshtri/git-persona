@@ -4,14 +4,48 @@ use crate::domain::{
     ports::{AuditSink, CredentialStore, CredentialVault, ProfileCredentialSync, ProfileStore},
 };
 use crate::error::AppError;
+use argon2::password_hash::{
+    rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+};
+use argon2::Argon2;
 use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Bounds for a reveal PIN. A short numeric PIN is the intended case; the upper
+/// bound just guards against absurd input. The vault (protected by the OS login)
+/// remains the primary boundary — the PIN is a second, deliberate gate.
+const PIN_MIN_LEN: usize = 4;
+const PIN_MAX_LEN: usize = 64;
+
+fn hash_pin(pin: &str) -> Result<String, AppError> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(pin.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| AppError::Crypto(e.to_string()))
+}
+
+fn verify_pin(pin: &str, hash: &str) -> Result<bool, AppError> {
+    let parsed = PasswordHash::new(hash).map_err(|e| AppError::Crypto(e.to_string()))?;
+    Ok(Argon2::default()
+        .verify_password(pin.as_bytes(), &parsed)
+        .is_ok())
+}
+
 /// The canonical, Git-readable vault target for a host — exactly what the
 /// `wincred` / GCM credential helpers look up (`git:https://github.com`).
-fn canonical_target(host: &str, protocol: Protocol) -> String {
+pub(crate) fn canonical_target(host: &str, protocol: Protocol) -> String {
     format!("git:{}://{}", protocol.scheme(), host)
+}
+
+/// A path-scoped canonical target (`git:https://github.com/<owner>/<repo>.git`)
+/// for per-repository credentials. Git builds the exact same target when
+/// `credential.<scheme>://<host>.useHttpPath` is enabled and the remote has the
+/// given path — leading/trailing slashes are dropped to match Git's `path`.
+pub(crate) fn path_scoped_target(host: &str, protocol: Protocol, path: &str) -> String {
+    let path = path.trim_matches('/');
+    format!("git:{}://{}/{path}", protocol.scheme(), host)
 }
 
 /// A per-credential backing target where a profile's secret is parked until the
@@ -126,10 +160,59 @@ impl CredentialService {
             created_at: now,
             updated_at: now,
             last_used: None,
+            has_pin: false,
         };
         self.store.save(&credential)?;
         self.log("credential.create", profile_id, Some(host))?;
         Ok(credential)
+    }
+
+    /// Set (or replace) the reveal PIN for a credential. Only the Argon2 hash is
+    /// persisted; the raw PIN is never stored. Enabling a PIN is what makes a
+    /// credential's token readable again via [`reveal`](Self::reveal).
+    pub(crate) fn set_pin(&self, id: Uuid, pin: &str) -> Result<Credential, AppError> {
+        if pin.len() < PIN_MIN_LEN || pin.len() > PIN_MAX_LEN {
+            return Err(AppError::Validation(format!(
+                "PIN must be between {PIN_MIN_LEN} and {PIN_MAX_LEN} characters"
+            )));
+        }
+        let mut credential = self.get(id)?;
+        let hash = hash_pin(pin)?;
+        self.store.save_pin(id, &hash)?;
+        credential.has_pin = true;
+        credential.updated_at = Utc::now();
+        self.store.save(&credential)?;
+        self.log(
+            "credential.pin_set",
+            credential.profile_id,
+            Some(credential.host.clone()),
+        )?;
+        Ok(credential)
+    }
+
+    /// Read a credential's token back from the vault after verifying its PIN.
+    /// Fails if no PIN is set or the PIN is wrong; the secret is returned in a
+    /// zeroizing buffer and never touches the audit log.
+    pub(crate) fn reveal(&self, id: Uuid, pin: &str) -> Result<Secret, AppError> {
+        let credential = self.get(id)?;
+        let hash = self
+            .store
+            .load_pin(id)?
+            .ok_or_else(|| AppError::Validation("no PIN is set for this credential".into()))?;
+        if !verify_pin(pin, &hash)? {
+            return Err(AppError::Validation("incorrect PIN".into()));
+        }
+        let backing = backing_target(credential.id, &credential.host, credential.protocol);
+        let secret = self
+            .vault
+            .reveal(&backing)?
+            .ok_or_else(|| AppError::Credential("backing secret missing".into()))?;
+        self.log(
+            "credential.reveal",
+            credential.profile_id,
+            Some(credential.host),
+        )?;
+        Ok(secret)
     }
 
     /// Update the username and optionally rotate the token. A rotated token is
@@ -222,13 +305,54 @@ impl CredentialService {
         Ok(credential)
     }
 
+    /// Promote a profile's credential for `host` onto the **path-scoped** target
+    /// for that repository's remote path, so git operations in that repository
+    /// authenticate as the profile regardless of which profile is globally
+    /// active. Returns whether a credential was pinned (`false` when the profile
+    /// owns no credential for `host`).
+    pub(crate) fn pin_path(
+        &self,
+        profile_id: Uuid,
+        host: &str,
+        path: &str,
+    ) -> Result<bool, AppError> {
+        let Some(credential) = self.store.find_by_host(profile_id, host)? else {
+            return Ok(false);
+        };
+        let target = path_scoped_target(&credential.host, credential.protocol, path);
+        self.promote_to(&credential, &target)?;
+        let mut used = credential.clone();
+        used.last_used = Some(Utc::now());
+        self.store.save(&used)?;
+        self.log("credential.pin_path", Some(profile_id), Some(target))?;
+        Ok(true)
+    }
+
+    /// Remove the path-scoped credential for `host`/`path`, returning the
+    /// repository to the globally active credential.
+    pub(crate) fn unpin_path(&self, host: &str, path: &str) -> Result<(), AppError> {
+        let target = path_scoped_target(host, Protocol::Https, path);
+        let _ = self.vault.delete(&target)?;
+        self.log("credential.unpin_path", None, Some(target))?;
+        Ok(())
+    }
+
+    /// Promote a single credential's backing secret onto a given target,
+    /// returning the target slot's prior contents for rollback.
+    fn promote_to(
+        &self,
+        credential: &Credential,
+        target: &str,
+    ) -> Result<VaultSnapshot, AppError> {
+        let backing = backing_target(credential.id, &credential.host, credential.protocol);
+        self.vault.promote(&backing, target, &credential.username)
+    }
+
     /// Promote a single credential's backing secret onto its canonical target,
     /// returning the canonical slot's prior contents for rollback.
     fn promote(&self, credential: &Credential) -> Result<VaultSnapshot, AppError> {
-        let backing = backing_target(credential.id, &credential.host, credential.protocol);
         let canonical = canonical_target(&credential.host, credential.protocol);
-        self.vault
-            .promote(&backing, &canonical, &credential.username)
+        self.promote_to(credential, &canonical)
     }
 }
 
@@ -279,6 +403,14 @@ impl ProfileCredentialSync for CredentialService {
             None => Ok(()),
         }
     }
+
+    fn pin_path(&self, profile_id: Uuid, host: &str, path: &str) -> Result<bool, AppError> {
+        Self::pin_path(self, profile_id, host, path)
+    }
+
+    fn unpin_path(&self, host: &str, path: &str) -> Result<(), AppError> {
+        Self::unpin_path(self, host, path)
+    }
 }
 
 #[cfg(test)]
@@ -303,6 +435,7 @@ mod tests {
     #[derive(Default)]
     struct MockCredStore {
         items: Mutex<Vec<Credential>>,
+        pins: Mutex<HashMap<Uuid, String>>,
     }
     impl CredentialStore for MockCredStore {
         fn load_all(&self) -> Result<Vec<Credential>, AppError> {
@@ -346,7 +479,15 @@ mod tests {
             if items.len() == before {
                 return Err(AppError::NotFound(format!("credential {id}")));
             }
+            self.pins.lock().unwrap().remove(&id);
             Ok(())
+        }
+        fn save_pin(&self, id: Uuid, hash: &str) -> Result<(), AppError> {
+            self.pins.lock().unwrap().insert(id, hash.to_owned());
+            Ok(())
+        }
+        fn load_pin(&self, id: Uuid) -> Result<Option<String>, AppError> {
+            Ok(self.pins.lock().unwrap().get(&id).cloned())
         }
     }
 
@@ -393,6 +534,14 @@ mod tests {
                 .unwrap()
                 .get(target)
                 .map(|(u, _)| u.clone()))
+        }
+        fn reveal(&self, target: &str) -> Result<Option<Secret>, AppError> {
+            Ok(self
+                .slots
+                .lock()
+                .unwrap()
+                .get(target)
+                .map(|(_, s)| Zeroizing::new(s.clone())))
         }
         fn promote(&self, from: &str, to: &str, username: &str) -> Result<VaultSnapshot, AppError> {
             let secret = self
@@ -799,9 +948,157 @@ mod tests {
     }
 
     #[test]
+    fn set_pin_enables_reveal_of_stored_token() {
+        let h = harness();
+        let c = h
+            .svc
+            .create(None, "github.com", "alice".into(), &secret("ghp_reveal_me"))
+            .unwrap();
+        assert!(!c.has_pin);
+        let updated = h.svc.set_pin(c.id, "1234").unwrap();
+        assert!(updated.has_pin);
+        let revealed = h.svc.reveal(c.id, "1234").unwrap();
+        assert_eq!(revealed.as_str(), "ghp_reveal_me");
+        assert!(audit_has(&h, "credential.reveal"));
+    }
+
+    #[test]
+    fn reveal_rejects_wrong_pin() {
+        let h = harness();
+        let c = h
+            .svc
+            .create(None, "github.com", "alice".into(), &secret("tok"))
+            .unwrap();
+        h.svc.set_pin(c.id, "1234").unwrap();
+        let err = h.svc.reveal(c.id, "9999").unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
+    #[test]
+    fn reveal_without_pin_set_errors() {
+        let h = harness();
+        let c = h
+            .svc
+            .create(None, "github.com", "alice".into(), &secret("tok"))
+            .unwrap();
+        let err = h.svc.reveal(c.id, "1234").unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
+    #[test]
+    fn set_pin_rejects_too_short() {
+        let h = harness();
+        let c = h
+            .svc
+            .create(None, "github.com", "alice".into(), &secret("tok"))
+            .unwrap();
+        let err = h.svc.set_pin(c.id, "12").unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
+    #[test]
+    fn delete_removes_pin() {
+        let h = harness();
+        let c = h
+            .svc
+            .create(None, "github.com", "alice".into(), &secret("tok"))
+            .unwrap();
+        h.svc.set_pin(c.id, "1234").unwrap();
+        h.svc.delete(c.id).unwrap();
+        assert!(h.store.load_pin(c.id).unwrap().is_none());
+    }
+
+    #[test]
     fn get_missing_errors() {
         let h = harness();
         let err = h.svc.get(Uuid::new_v4()).unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn pin_path_promotes_backing_to_path_scoped_target() {
+        let h = harness();
+        let pid = add_profile(&h);
+        h.svc
+            .create(Some(pid), "github.com", "joshtri".into(), &secret("ghp_pin"))
+            .unwrap();
+
+        h.svc.pin_path(pid, "github.com", "Joshtri/landing-page-dolphin-laundry.git")
+            .unwrap();
+
+        let scoped = h
+            .vault
+            .get_raw("git:https://github.com/Joshtri/landing-page-dolphin-laundry.git")
+            .unwrap();
+        assert_eq!(scoped.0, "joshtri");
+        assert_eq!(scoped.1, "ghp_pin");
+        // The host-level canonical slot is left untouched by a path pin.
+        assert!(h.vault.get_raw("git:https://github.com").is_none());
+        assert!(audit_has(&h, "credential.pin_path"));
+    }
+
+    #[test]
+    fn pin_path_is_noop_without_profile_credential() {
+        let h = harness();
+        let pid = add_profile(&h);
+        assert!(!h
+            .svc
+            .pin_path(pid, "github.com", "Joshtri/repo.git")
+            .unwrap());
+        assert!(h
+            .vault
+            .get_raw("git:https://github.com/Joshtri/repo.git")
+            .is_none());
+    }
+
+    #[test]
+    fn unpin_path_removes_scoped_target() {
+        let h = harness();
+        let pid = add_profile(&h);
+        h.svc
+            .create(Some(pid), "github.com", "joshtri".into(), &secret("t"))
+            .unwrap();
+        h.svc
+            .pin_path(pid, "github.com", "Joshtri/repo.git")
+            .unwrap();
+        assert!(h
+            .vault
+            .get_raw("git:https://github.com/Joshtri/repo.git")
+            .is_some());
+
+        h.svc.unpin_path("github.com", "Joshtri/repo.git").unwrap();
+        assert!(h
+            .vault
+            .get_raw("git:https://github.com/Joshtri/repo.git")
+            .is_none());
+    }
+
+    #[test]
+    fn parse_https_remote_extracts_host_and_path() {
+        use crate::domain::credential::parse_https_remote;
+        let (host, path) =
+            parse_https_remote("https://github.com/Joshtri/landing-page-dolphin-laundry.git")
+                .unwrap();
+        assert_eq!(host, "github.com");
+        assert_eq!(path, "Joshtri/landing-page-dolphin-laundry.git");
+    }
+
+    #[test]
+    fn parse_https_remote_strips_trailing_slash_and_userinfo() {
+        use crate::domain::credential::parse_https_remote;
+        let (host, path) = parse_https_remote(
+            "https://joshtri@GitHub.com/Joshtri/landing-page-dolphin-laundry.git/",
+        )
+        .unwrap();
+        assert_eq!(host, "github.com");
+        assert_eq!(path, "Joshtri/landing-page-dolphin-laundry.git");
+    }
+
+    #[test]
+    fn parse_https_remote_rejects_ssh_and_host_only() {
+        use crate::domain::credential::parse_https_remote;
+        assert!(parse_https_remote("git@github.com:Joshtri/repo.git").is_none());
+        assert!(parse_https_remote("https://github.com").is_none());
+        assert!(parse_https_remote("file:///tmp/repo").is_none());
     }
 }

@@ -1,5 +1,6 @@
 use crate::{
     domain::ports::CredentialVault,
+    services::bootstrap_service::BootstrapService,
     infra::{
         audit_jsonl::JsonlAuditSink, credential_store_tauri::TauriCredentialStore,
         git_config_gix::GixGitConfig, git_dir_watcher::GitDirWatcher,
@@ -16,6 +17,7 @@ use crate::{
         identity_switch_service::{
             IdentitySwitchService, ProfileIdentitySwitcher, RepoIdentityResolver,
         },
+        onboarding_service::OnboardingService,
         profile_service::ProfileService,
         repo_service::RepoService,
         rule_service::RuleService,
@@ -36,10 +38,12 @@ pub(crate) struct AppState {
     pub(crate) profiles: Arc<ProfileService>,
     pub(crate) activity: ActivityService,
     pub(crate) repos: RepoService,
-    pub(crate) ssh: SshService,
+    pub(crate) ssh: Arc<SshService>,
     pub(crate) credentials: Arc<CredentialService>,
     pub(crate) rules: Arc<RuleService>,
     pub(crate) identity_switch: Arc<IdentitySwitchService>,
+    pub(crate) onboarding: OnboardingService,
+    pub(crate) bootstrap: BootstrapService,
 }
 
 impl AppState {
@@ -71,7 +75,7 @@ impl AppState {
         let cred_vault: Arc<dyn CredentialVault> = Arc::new(NoopCredentialVault);
         let credentials = Arc::new(CredentialService::new(
             cred_store,
-            cred_vault,
+            cred_vault.clone(),
             store.clone(),
             audit.clone(),
         ));
@@ -79,7 +83,7 @@ impl AppState {
         let profiles = Arc::new(ProfileService::new(
             store.clone(),
             repo_store.clone(),
-            git_config,
+            git_config.clone(),
             credentials.clone(),
             audit.clone(),
         ));
@@ -113,23 +117,39 @@ impl AppState {
             audit.clone(),
         ));
 
+        let ssh = Arc::new(SshService::new(
+            ssh_store,
+            ssh_scanner.clone(),
+            ssh_reader.clone(),
+            ssh_generator,
+            ssh_config,
+            store.clone(),
+            audit.clone(),
+        ));
+
+        // First-run onboarding composes read-only detection over the existing
+        // ports and delegates imports to the profile/SSH services.
+        let onboarding = OnboardingService::new(
+            git_config,
+            cred_vault,
+            ssh_scanner,
+            ssh_reader,
+            profiles.clone(),
+            ssh.clone(),
+            store.clone(),
+        );
+
         Ok(Self {
-            settings: SettingsService::new(store.clone()),
+            settings: SettingsService::new(store),
             profiles,
             activity: ActivityService::new(audit.clone()),
-            repos: RepoService::new(repo_store, scanner, git_meta, audit.clone()),
-            ssh: SshService::new(
-                ssh_store,
-                ssh_scanner,
-                ssh_reader,
-                ssh_generator,
-                ssh_config,
-                store,
-                audit,
-            ),
+            repos: RepoService::new(repo_store, scanner, git_meta, audit),
+            ssh,
             credentials,
             rules,
             identity_switch,
+            onboarding,
+            bootstrap: BootstrapService::new(),
         })
     }
 }

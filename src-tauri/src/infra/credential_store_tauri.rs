@@ -1,10 +1,14 @@
 use crate::domain::{credential::Credential, ports::CredentialStore};
 use crate::error::AppError;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
 const CREDENTIALS_KEY: &str = "credentials";
+/// Side map of credential id → Argon2 hash of its reveal PIN. Kept out of the
+/// `Credential` records so the hash never rides along on the wire to the UI.
+const CREDENTIAL_PINS_KEY: &str = "credential_pins";
 const STORE_FILE: &str = "gitpersona.json";
 
 /// Persists [`Credential`] **metadata** in the shared Tauri store. Secrets are
@@ -54,6 +58,26 @@ impl TauriCredentialStore {
         store.set(CREDENTIALS_KEY, val);
         store.save().map_err(|e| AppError::Store(e.to_string()))
     }
+
+    fn read_pins(
+        store: &tauri_plugin_store::Store<tauri::Wry>,
+    ) -> Result<HashMap<Uuid, String>, AppError> {
+        match store.get(CREDENTIAL_PINS_KEY) {
+            Some(v) => {
+                serde_json::from_value(v.clone()).map_err(|e| AppError::Store(e.to_string()))
+            }
+            None => Ok(HashMap::new()),
+        }
+    }
+
+    fn write_pins(
+        store: &tauri_plugin_store::Store<tauri::Wry>,
+        pins: &HashMap<Uuid, String>,
+    ) -> Result<(), AppError> {
+        let val = serde_json::to_value(pins).map_err(|e| AppError::Store(e.to_string()))?;
+        store.set(CREDENTIAL_PINS_KEY, val);
+        store.save().map_err(|e| AppError::Store(e.to_string()))
+    }
 }
 
 impl CredentialStore for TauriCredentialStore {
@@ -92,7 +116,24 @@ impl CredentialStore for TauriCredentialStore {
             if items.len() == before {
                 return Err(AppError::NotFound(format!("credential {id}")));
             }
-            Self::write(store, &items)
+            Self::write(store, &items)?;
+            let mut pins = Self::read_pins(store)?;
+            if pins.remove(&id).is_some() {
+                Self::write_pins(store, &pins)?;
+            }
+            Ok(())
         })
+    }
+
+    fn save_pin(&self, id: Uuid, hash: &str) -> Result<(), AppError> {
+        self.with_store(|store| {
+            let mut pins = Self::read_pins(store)?;
+            pins.insert(id, hash.to_owned());
+            Self::write_pins(store, &pins)
+        })
+    }
+
+    fn load_pin(&self, id: Uuid) -> Result<Option<String>, AppError> {
+        self.with_store(|store| Ok(Self::read_pins(store)?.get(&id).cloned()))
     }
 }
