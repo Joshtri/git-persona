@@ -5,10 +5,10 @@ export function useAppVersion(): string {
   const [version, setVersion] = useState("…");
 
   useEffect(() => {
-    appVersion().then(setVersion).catch(() => { });
-
+    appVersion()
+      .then(setVersion)
+      .catch(() => {});
   }, []);
-
 
   return version;
 }

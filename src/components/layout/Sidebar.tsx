@@ -14,9 +14,9 @@ import {
   Sliders,
 } from "@gravity-ui/icons";
 import { type ComponentType, type SVGAttributes, useEffect, useState } from "react";
+import { useAppVersion } from "@/hooks/useAppVersion";
 // import { Avatar, Kbd, Separator } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { useAppVersion } from "@/hooks/useAppVersion";
 import { useProfilesStore } from "@/stores/profiles";
 import { useViewStore, type ViewName } from "@/stores/view";
 import { Avatar } from "../avatar";

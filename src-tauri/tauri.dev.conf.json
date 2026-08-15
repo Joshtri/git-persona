@@ -1,9 +1,7 @@
 {
   "plugins": {
     "updater": {
-      "endpoints": [
-        "http://localhost:3000/update/{{target}}/{{arch}}/{{current_version}}"
-      ]
+      "endpoints": ["http://localhost:3000/update/{{target}}/{{arch}}/{{current_version}}"]
     }
   }
 }
