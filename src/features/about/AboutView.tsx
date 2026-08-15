@@ -1,4 +1,5 @@
 import { ArrowUpRightFromSquare, CodeFork, LogoGithub, Star } from "@gravity-ui/icons";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
 import { Separator } from "@/components/separator";
@@ -19,6 +20,7 @@ const OSS_DEPS = [
 ];
 
 export function AboutView() {
+  const version = useAppVersion();
   return (
     <div className="flex flex-col gap-6 max-w-lg">
       {/* App identity */}
@@ -30,7 +32,7 @@ export function AboutView() {
           <h1 className="text-xl font-bold text-(--color-fg) tracking-tight">GitPersona</h1>
           <p className="text-sm text-(--color-secondary)">Developer Identity Manager</p>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="default">v0.1.0</Badge>
+            <Badge variant="default">v{version}</Badge>
             <Badge variant="default">Sprint 1</Badge>
           </div>
         </div>
@@ -73,7 +75,7 @@ export function AboutView() {
         </h2>
         <div className="grid grid-cols-2 gap-2 text-sm">
           {[
-            ["Version", "0.1.0"],
+            ["Version", version],
             ["Platform", "Windows 11"],
             ["Runtime", "Tauri 2"],
             ["Frontend", "React 19"],

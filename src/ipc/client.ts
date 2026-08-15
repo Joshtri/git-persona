@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   AppSettings,
@@ -19,6 +20,10 @@ import type {
   SshKey,
   SystemScan,
 } from "./types.gen";
+
+export async function appVersion(): Promise<string> {
+  return getVersion();
+}
 
 export async function openUrl(url: string): Promise<void> {
   return openerOpenUrl(url);

@@ -1,6 +1,6 @@
 [package]
 name = "gitswitch-desktop"
-version = "0.9.0"
+version = "0.9.1"
 description = "GitPersona — Developer Identity Manager"
 authors = []
 edition = "2021"

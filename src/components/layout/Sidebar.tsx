@@ -16,6 +16,7 @@ import {
 import { type ComponentType, type SVGAttributes, useEffect, useState } from "react";
 // import { Avatar, Kbd, Separator } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { useProfilesStore } from "@/stores/profiles";
 import { useViewStore, type ViewName } from "@/stores/view";
 import { Avatar } from "../avatar";
@@ -204,6 +205,7 @@ function ProfileSwitcher() {
 
 export function Sidebar() {
   const { current, navigate, openPalette } = useViewStore();
+  const version = useAppVersion();
 
   return (
     <aside className="w-52 flex flex-col shrink-0 border-r border-(--color-border) bg-(--color-surface) select-none">
@@ -232,7 +234,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-(--color-border) px-3 py-2.5 flex items-center justify-between">
-        <span className="text-[11px] text-(--color-muted)">v0.1.0</span>
+        <span className="text-[11px] text-(--color-muted)">v{version}</span>
         <button
           type="button"
           onClick={openPalette}

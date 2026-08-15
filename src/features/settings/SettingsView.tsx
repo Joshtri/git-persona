@@ -4,6 +4,7 @@ import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { Separator } from "@/components/separator";
@@ -44,6 +45,7 @@ const DEFAULT_SMART = {
 };
 
 export function SettingsView() {
+  const version = useAppVersion();
   const { data, loading, error, fetch, update } = useSettingsStore();
   const toast = useFeedbackStore((s) => s.toast);
   const setSmartEnabled = useSmartSwitchStore((s) => s.setEnabled);
@@ -285,7 +287,7 @@ export function SettingsView() {
         <SectionHeader title="Version" />
         <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) px-4 overflow-hidden">
           <SettingRow label="GitPersona" description="Developer Identity Manager">
-            <Badge variant="default">v0.1.0</Badge>
+            <Badge variant="default">v{version}</Badge>
           </SettingRow>
           <SettingRow label="Runtime" description="Tauri 2 on Windows 11">
             <Badge variant="default">Stable</Badge>

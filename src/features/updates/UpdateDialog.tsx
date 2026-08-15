@@ -20,13 +20,14 @@ export function UpdateDialog() {
   useEffect(() => {
     check()
       .then((update) => {
+        // console.log("[updater] check() result:", update);
         if (update?.available) {
           pendingUpdate.current = update;
           setPhase({ kind: "available", version: update.version, body: update.body ?? null });
         }
       })
-      .catch(() => {
-        // Network unavailable or server error — silently ignored.
+      .catch((err) => {
+        // console.error("[updater] check() failed:", err);
       });
   }, []);
 
@@ -38,7 +39,9 @@ export function UpdateDialog() {
     let total = 0;
 
     try {
+      // console.log("[updater] starting downloadAndInstall, update:", update);
       await update.downloadAndInstall((event) => {
+        // console.log("[updater] download event:", event);
         switch (event.event) {
           case "Started":
             total = event.data.contentLength ?? 0;
@@ -57,7 +60,8 @@ export function UpdateDialog() {
         }
       });
       await relaunch();
-    } catch {
+    } catch (_err) {
+      // console.error("[updater] downloadAndInstall failed:", err);
       setPhase({ kind: "error" });
     }
   }, []);
