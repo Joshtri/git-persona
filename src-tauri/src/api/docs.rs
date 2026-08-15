@@ -8,7 +8,7 @@ use super::schemas::{
 #[openapi(
     info(
         title = "GitPersona IPC Reference",
-        version = "0.1.0",
+        version = "0.9.2",
         description = "Internal API documentation for GitPersona Tauri commands. \
                        These endpoints mirror the IPC surface exposed to the frontend \
                        via `invoke()` — not an HTTP API in production."
