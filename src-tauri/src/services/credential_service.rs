@@ -339,11 +339,7 @@ impl CredentialService {
 
     /// Promote a single credential's backing secret onto a given target,
     /// returning the target slot's prior contents for rollback.
-    fn promote_to(
-        &self,
-        credential: &Credential,
-        target: &str,
-    ) -> Result<VaultSnapshot, AppError> {
+    fn promote_to(&self, credential: &Credential, target: &str) -> Result<VaultSnapshot, AppError> {
         let backing = backing_target(credential.id, &credential.host, credential.protocol);
         self.vault.promote(&backing, target, &credential.username)
     }
@@ -1020,10 +1016,20 @@ mod tests {
         let h = harness();
         let pid = add_profile(&h);
         h.svc
-            .create(Some(pid), "github.com", "joshtri".into(), &secret("ghp_pin"))
+            .create(
+                Some(pid),
+                "github.com",
+                "joshtri".into(),
+                &secret("ghp_pin"),
+            )
             .unwrap();
 
-        h.svc.pin_path(pid, "github.com", "Joshtri/landing-page-dolphin-laundry.git")
+        h.svc
+            .pin_path(
+                pid,
+                "github.com",
+                "Joshtri/landing-page-dolphin-laundry.git",
+            )
             .unwrap();
 
         let scoped = h

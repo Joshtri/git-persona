@@ -1,7 +1,5 @@
 use crate::{
-    domain::bootstrap::{
-        AnnouncementAction, AnnouncementInfo, BootstrapData, ReleaseInfo, ReleaseNote, UpdateInfo,
-    },
+    domain::bootstrap::{AnnouncementAction, AnnouncementInfo, BootstrapData},
     error::AppError,
 };
 use std::collections::HashMap;
@@ -18,37 +16,8 @@ struct WireEnvelope {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WireBootstrapData {
-    update: WireUpdateInfo,
     announcements: Vec<WireAnnouncement>,
     feature_flags: HashMap<String, bool>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WireUpdateInfo {
-    update_available: bool,
-    force_update: bool,
-    latest: Option<WireRelease>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WireRelease {
-    version: String,
-    channel: String,
-    title: String,
-    summary: String,
-    release_notes: Vec<WireReleaseNote>,
-    minimum_version: Option<String>,
-    download_url: String,
-    published_at: String,
-}
-
-#[derive(serde::Deserialize)]
-struct WireReleaseNote {
-    #[serde(rename = "type")]
-    note_type: String,
-    title: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -76,27 +45,6 @@ struct WireAction {
 
 fn from_wire(wire: WireBootstrapData) -> BootstrapData {
     BootstrapData {
-        update: UpdateInfo {
-            update_available: wire.update.update_available,
-            force_update: wire.update.force_update,
-            latest: wire.update.latest.map(|r| ReleaseInfo {
-                version: r.version,
-                channel: r.channel,
-                title: r.title,
-                summary: r.summary,
-                release_notes: r
-                    .release_notes
-                    .into_iter()
-                    .map(|n| ReleaseNote {
-                        note_type: n.note_type,
-                        title: n.title,
-                    })
-                    .collect(),
-                minimum_version: r.minimum_version,
-                download_url: r.download_url,
-                published_at: r.published_at,
-            }),
-        },
         announcements: wire
             .announcements
             .into_iter()

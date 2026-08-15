@@ -467,11 +467,10 @@ mod tests {
             Ok(())
         }
         fn pin_path(&self, profile_id: Uuid, host: &str, path: &str) -> Result<bool, AppError> {
-            self.pinned.lock().unwrap().push((
-                profile_id,
-                host.to_string(),
-                path.to_string(),
-            ));
+            self.pinned
+                .lock()
+                .unwrap()
+                .push((profile_id, host.to_string(), path.to_string()));
             Ok(true)
         }
         fn unpin_path(&self, host: &str, path: &str) -> Result<(), AppError> {
@@ -830,7 +829,9 @@ mod tests {
             git_root: "/tmp/laundry".into(),
             active_branch: None,
             active_profile_id: None,
-            remote_origin: Some("https://github.com/Joshtri/landing-page-dolphin-laundry.git".into()),
+            remote_origin: Some(
+                "https://github.com/Joshtri/landing-page-dolphin-laundry.git".into(),
+            ),
             last_opened: None,
             favorite: false,
             detected_at: Utc::now(),

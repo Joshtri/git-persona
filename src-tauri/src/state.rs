@@ -1,6 +1,5 @@
 use crate::{
     domain::ports::CredentialVault,
-    services::bootstrap_service::BootstrapService,
     infra::{
         audit_jsonl::JsonlAuditSink, credential_store_tauri::TauriCredentialStore,
         git_config_gix::GixGitConfig, git_dir_watcher::GitDirWatcher,
@@ -11,6 +10,7 @@ use crate::{
         ssh_scanner_fs::FsSshScanner, ssh_store_tauri::TauriSshStore,
         switch_observer_tauri::TauriSwitchObserver,
     },
+    services::bootstrap_service::BootstrapService,
     services::{
         activity_service::ActivityService,
         credential_service::CredentialService,

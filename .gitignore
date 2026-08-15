@@ -39,3 +39,5 @@ src-tauri/bindings
 .mcp.json
 CLAUDE.md
 docs
+~
+scripts

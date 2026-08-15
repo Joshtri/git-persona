@@ -156,7 +156,13 @@ impl GitConfigBackend for GixGitConfig {
         let mut f = open(&config_path, gix_config::Source::Local)?;
         let subsection = format!("https://{}", host.to_ascii_lowercase());
         let value = if enabled { Some("true") } else { None };
-        upsert(&mut f, "credential", Some(&subsection), "useHttpPath", value)?;
+        upsert(
+            &mut f,
+            "credential",
+            Some(&subsection),
+            "useHttpPath",
+            value,
+        )?;
         write_file(&config_path, &f)
     }
 }

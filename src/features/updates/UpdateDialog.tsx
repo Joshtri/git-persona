@@ -1,155 +1,132 @@
-import { CircleExclamationFill } from "@gravity-ui/icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { Button } from "@/components/button";
 import { Dialog } from "@/components/dialog";
-import { openUrl } from "@/ipc/client";
-import type { ReleaseNote } from "@/ipc/types.gen";
-import { cn } from "@/lib/cn";
-import { useBootstrapStore } from "@/stores/bootstrap";
-import { useFeedbackStore } from "@/stores/feedback";
 
-const NOTE_TYPE_META: Record<string, { label: string; className: string }> = {
-  security: {
-    label: "Security",
-    className: "bg-danger/15 text-danger",
-  },
-  feature: {
-    label: "Feature",
-    className: "bg-brand-500/15 text-(--color-brand-300)",
-  },
-  improvement: {
-    label: "Improvement",
-    className: "bg-(--color-success)/15 text-(--color-success)",
-  },
-  fix: {
-    label: "Fix",
-    className: "bg-(--color-warning)/15 text-(--color-warning)",
-  },
-};
-
-const NOTE_TYPE_ORDER = ["security", "feature", "improvement", "fix"];
-
-function groupNotes(notes: ReleaseNote[]): Record<string, ReleaseNote[]> {
-  const groups: Record<string, ReleaseNote[]> = {};
-  for (const note of notes) {
-    if (!groups[note.type]) groups[note.type] = [];
-    groups[note.type].push(note);
-  }
-  return groups;
-}
-
-async function handleDownload(url: string) {
-  try {
-    await openUrl(url);
-  } catch {
-    useFeedbackStore
-      .getState()
-      .toast("Could not open download link. Please visit the website manually.", "error");
-  }
-}
+type Phase =
+  | { kind: "idle" }
+  | { kind: "available"; version: string; body: string | null }
+  | { kind: "downloading"; progress: number }
+  | { kind: "ready" }
+  | { kind: "error" };
 
 export function UpdateDialog() {
-  const update = useBootstrapStore((s) => s.update);
-  const updateDismissed = useBootstrapStore((s) => s.updateDismissed);
-  const dismissUpdate = useBootstrapStore((s) => s.dismissUpdate);
+  const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [dismissed, setDismissed] = useState(false);
+  // Held in a ref so the object survives re-renders without going into state.
+  const pendingUpdate = useRef<Awaited<ReturnType<typeof check>>>(null);
 
-  const isOpen = Boolean(update?.update_available && !updateDismissed);
-  const latest = update?.latest ?? null;
-  const isForced = update?.force_update ?? false;
+  useEffect(() => {
+    check()
+      .then((update) => {
+        if (update?.available) {
+          pendingUpdate.current = update;
+          setPhase({ kind: "available", version: update.version, body: update.body ?? null });
+        }
+      })
+      .catch(() => {
+        // Network unavailable or server error — silently ignored.
+      });
+  }, []);
 
-  const groups = latest ? groupNotes(latest.release_notes) : {};
-  const orderedTypes = NOTE_TYPE_ORDER.filter((t) => groups[t]);
+  const handleDownload = useCallback(async () => {
+    const update = pendingUpdate.current;
+    if (!update?.available) return;
+
+    let downloaded = 0;
+    let total = 0;
+
+    try {
+      await update.downloadAndInstall((event) => {
+        switch (event.event) {
+          case "Started":
+            total = event.data.contentLength ?? 0;
+            setPhase({ kind: "downloading", progress: 0 });
+            break;
+          case "Progress":
+            downloaded += event.data.chunkLength;
+            setPhase({
+              kind: "downloading",
+              progress: total > 0 ? Math.round((downloaded / total) * 100) : 0,
+            });
+            break;
+          case "Finished":
+            setPhase({ kind: "ready" });
+            break;
+        }
+      });
+      await relaunch();
+    } catch {
+      setPhase({ kind: "error" });
+    }
+  }, []);
+
+  const isVisible =
+    (phase.kind === "available" ||
+      phase.kind === "downloading" ||
+      phase.kind === "ready" ||
+      phase.kind === "error") &&
+    !dismissed;
 
   return (
     <Dialog.Root
-      open={isOpen}
+      open={isVisible}
       onOpenChange={(open) => {
-        if (!open && !isForced) dismissUpdate();
+        if (!open && phase.kind !== "downloading") setDismissed(true);
       }}
     >
-      {isOpen && latest && (
+      {isVisible && (
         <Dialog.Content
-          title={isForced ? "Critical Update Required" : "Update Available"}
+          title={phase.kind === "error" ? "Update Failed" : "Update Available"}
           description={
-            isForced
-              ? "This version is no longer supported. You must update to continue."
-              : `GitPersona ${latest.version} is now available.`
+            phase.kind === "available"
+              ? `GitPersona ${phase.version} is now available.`
+              : phase.kind === "downloading"
+                ? "Downloading update, please wait…"
+                : phase.kind === "ready"
+                  ? "Update installed. Restarting…"
+                  : "Could not download the update. Please try again later."
           }
-          hideClose={isForced}
-          className="max-w-lg"
+          hideClose={phase.kind === "downloading" || phase.kind === "ready"}
+          className="max-w-md"
         >
-          {isForced && (
-            <div className="flex items-start gap-2.5 p-3 rounded-(--radius-md) bg-danger/10 border border-danger/30 text-sm text-danger">
-              <CircleExclamationFill className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
-              <span>
-                GitPersona {latest.version} introduces critical changes. You must update before
-                continuing.
-              </span>
-            </div>
+          {phase.kind === "available" && phase.body && (
+            <p className="text-sm text-(--color-secondary) leading-relaxed whitespace-pre-line">
+              {phase.body}
+            </p>
           )}
 
-          {/* Release card */}
-          <div className="flex flex-col gap-1.5 p-3 rounded-(--radius-lg) bg-(--color-surface-2) border border-(--color-border)">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-(--color-fg)">{latest.title}</span>
-              <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-brand-500/15 text-(--color-brand-300)">
-                v{latest.version}
+          {phase.kind === "downloading" && (
+            <div className="flex flex-col gap-2">
+              <div className="h-2 rounded-full bg-(--color-surface-3) overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-(--color-brand-400) transition-[width] duration-200"
+                  style={{ width: `${phase.progress}%` }}
+                />
+              </div>
+              <span className="text-xs text-(--color-muted) text-right tabular-nums">
+                {phase.progress}%
               </span>
-              {latest.channel !== "stable" && (
-                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-(--color-warning)/15 text-(--color-warning)">
-                  {latest.channel}
-                </span>
-              )}
-            </div>
-            {latest.summary && (
-              <p className="text-sm text-(--color-secondary) leading-relaxed">{latest.summary}</p>
-            )}
-          </div>
-
-          {/* Release notes */}
-          {orderedTypes.length > 0 && (
-            <div className="flex flex-col gap-4 max-h-52 overflow-y-auto pr-0.5">
-              {orderedTypes.map((type) => {
-                const meta = NOTE_TYPE_META[type] ?? {
-                  label: type,
-                  className: "bg-(--color-surface-3) text-(--color-secondary)",
-                };
-                return (
-                  <div key={type}>
-                    <span
-                      className={cn("text-xs font-semibold px-1.5 py-0.5 rounded", meta.className)}
-                    >
-                      {meta.label}
-                    </span>
-                    <ul className="mt-2 flex flex-col gap-1.5">
-                      {groups[type].map((note) => (
-                        <li
-                          key={`${type}-${note.title}`}
-                          className="flex items-start gap-2.5 text-sm text-(--color-secondary)"
-                        >
-                          <span className="mt-2 size-1 rounded-full bg-(--color-muted) shrink-0" />
-                          {note.title}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
             </div>
           )}
 
           <Dialog.Footer>
-            {!isForced && (
-              <Button type="button" variant="ghost" onClick={dismissUpdate}>
-                Remind me later
+            {phase.kind === "available" && (
+              <>
+                <Button type="button" variant="ghost" onClick={() => setDismissed(true)}>
+                  Remind me later
+                </Button>
+                <Button type="button" variant="primary" onClick={handleDownload}>
+                  Download & Install
+                </Button>
+              </>
+            )}
+            {phase.kind === "error" && (
+              <Button type="button" variant="ghost" onClick={() => setDismissed(true)}>
+                Close
               </Button>
             )}
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => handleDownload(latest.download_url)}
-            >
-              Download Update
-            </Button>
           </Dialog.Footer>
         </Dialog.Content>
       )}

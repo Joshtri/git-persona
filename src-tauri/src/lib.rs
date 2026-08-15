@@ -56,6 +56,8 @@ pub fn run() {
     logging::init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -253,10 +255,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 mod export_bindings {
     use crate::domain::{
         audit::AuditEntry,
-        bootstrap::{
-            AnnouncementAction, AnnouncementInfo, BootstrapData, ReleaseInfo, ReleaseNote,
-            UpdateInfo,
-        },
+        bootstrap::{AnnouncementAction, AnnouncementInfo, BootstrapData},
         credential::{Credential, Protocol},
         identity::Identity,
         identity_switch::{SmartSwitchStatus, SwitchEvent, SwitchStatus},
@@ -275,9 +274,6 @@ mod export_bindings {
     #[test]
     fn export_ts_bindings() {
         BootstrapData::export_all_to("../src/ipc/").unwrap();
-        UpdateInfo::export_all_to("../src/ipc/").unwrap();
-        ReleaseInfo::export_all_to("../src/ipc/").unwrap();
-        ReleaseNote::export_all_to("../src/ipc/").unwrap();
         AnnouncementInfo::export_all_to("../src/ipc/").unwrap();
         AnnouncementAction::export_all_to("../src/ipc/").unwrap();
         Identity::export_all_to("../src/ipc/").unwrap();

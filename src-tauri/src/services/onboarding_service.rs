@@ -5,7 +5,9 @@ use crate::domain::{
     ports::{CredentialVault, GitConfigBackend, ProfileStore, SshKeyReader, SshScanner},
 };
 use crate::error::AppError;
-use crate::services::{credential_service::canonical_target, profile_service::ProfileService, ssh_service::SshService};
+use crate::services::{
+    credential_service::canonical_target, profile_service::ProfileService, ssh_service::SshService,
+};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -137,8 +139,12 @@ fn scan_system(
     })
 }
 
-fn detect_identity(git_config: &dyn GitConfigBackend) -> Result<Option<DetectedIdentity>, AppError> {
-    let name = git_config.get_global_name()?.filter(|s| !s.trim().is_empty());
+fn detect_identity(
+    git_config: &dyn GitConfigBackend,
+) -> Result<Option<DetectedIdentity>, AppError> {
+    let name = git_config
+        .get_global_name()?
+        .filter(|s| !s.trim().is_empty());
     let email = git_config
         .get_global_email()?
         .filter(|s| !s.trim().is_empty());

@@ -7,9 +7,7 @@ use tauri::State;
 /// temporarily unavailable, and the desktop must remain fully functional
 /// while offline. The TypeScript store silently swallows errors here.
 #[tauri::command]
-pub(crate) async fn bootstrap_fetch(
-    state: State<'_, AppState>,
-) -> Result<BootstrapData, AppError> {
+pub(crate) async fn bootstrap_fetch(state: State<'_, AppState>) -> Result<BootstrapData, AppError> {
     let version = env!("CARGO_PKG_VERSION");
     state.bootstrap.fetch(version, "stable").await
 }
