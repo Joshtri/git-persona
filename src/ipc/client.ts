@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   AppSettings,

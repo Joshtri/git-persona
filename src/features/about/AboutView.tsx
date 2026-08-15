@@ -1,8 +1,8 @@
 import { ArrowUpRightFromSquare, CodeFork, LogoGithub, Star } from "@gravity-ui/icons";
-import { useAppVersion } from "@/hooks/useAppVersion";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
 import { Separator } from "@/components/separator";
+import { useAppVersion } from "@/hooks/useAppVersion";
 
 // import { Badge, Button, Separator } from "@/components/ui";
 

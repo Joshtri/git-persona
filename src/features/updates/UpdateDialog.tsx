@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Dialog } from "@/components/dialog";
 
@@ -26,9 +26,7 @@ export function UpdateDialog() {
           setPhase({ kind: "available", version: update.version, body: update.body ?? null });
         }
       })
-      .catch((err) => {
-        // console.error("[updater] check() failed:", err);
-      });
+      .catch(() => {});
   }, []);
 
   const handleDownload = useCallback(async () => {
