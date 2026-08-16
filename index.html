@@ -23,9 +23,10 @@
     <script>
       // Apply the last-known theme before first paint so there is no dark→light
       // flash when the user's saved preference differs from the dark default.
-      (function () {
+      (() => {
+        var t;
         try {
-          var t = localStorage.getItem("gitpersona-theme");
+          t = localStorage.getItem("gitpersona-theme");
           if (t === "light") {
             document.documentElement.dataset.theme = "light";
             document.documentElement.style.background = "#f7f7fa";

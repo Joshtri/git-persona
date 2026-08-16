@@ -34,7 +34,6 @@ export function AboutView() {
 
   return (
     <div className="flex flex-col gap-8 max-w-lg">
-
       {/* Hero card */}
       <div className="rounded-(--radius-xl) border border-(--color-border) bg-(--color-surface) p-6 flex flex-col items-center gap-4 text-center">
         <div className="p-3 rounded-(--radius-xl) bg-(--color-surface-2) border border-(--color-border)">
@@ -55,8 +54,8 @@ export function AboutView() {
 
         <p className="text-sm text-(--color-secondary) leading-relaxed max-w-sm">
           Manage multiple Git identities — name, email, and signing keys — and switch between them
-          globally or per-repository. Built for developers who maintain separate work, personal,
-          and open-source profiles.
+          globally or per-repository. Built for developers who maintain separate work, personal, and
+          open-source profiles.
         </p>
 
         {/* Action links */}
@@ -89,12 +88,14 @@ export function AboutView() {
           Build Info
         </h2>
         <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
-          {([
-            ["Version", `v${version}`],
-            ["Platform", "Windows 11"],
-            ["Runtime", "Tauri 2"],
-            ["Frontend", "React 19"],
-          ] as const).map(([k, v]) => (
+          {(
+            [
+              ["Version", `v${version}`],
+              ["Platform", "Windows 11"],
+              ["Runtime", "Tauri 2"],
+              ["Frontend", "React 19"],
+            ] as const
+          ).map(([k, v]) => (
             <div
               key={k}
               className="flex items-center justify-between px-4 py-2.5 border-b border-(--color-border) last:border-b-0"

@@ -24,18 +24,40 @@ export type View =
   | { name: "about" }
   | { name: "onboarding" };
 
+type NavGuard = (view: View) => boolean;
+
 interface ViewStore {
   current: View;
   paletteOpen: boolean;
+  blockedNav: View | null;
+  guard: NavGuard | null;
   navigate: (view: View) => void;
+  setGuard: (guard: NavGuard | null) => void;
+  confirmNav: () => void;
+  cancelNav: () => void;
   openPalette: () => void;
   closePalette: () => void;
 }
 
-export const useViewStore = create<ViewStore>((set) => ({
+export const useViewStore = create<ViewStore>((set, get) => ({
   current: { name: "dashboard" },
   paletteOpen: false,
-  navigate: (view) => set({ current: view, paletteOpen: false }),
+  blockedNav: null,
+  guard: null,
+  navigate: (view) => {
+    const guard = get().guard;
+    if (guard && !guard(view)) {
+      set({ blockedNav: view });
+      return;
+    }
+    set({ current: view, paletteOpen: false, blockedNav: null });
+  },
+  setGuard: (guard) => set({ guard }),
+  confirmNav: () => {
+    const { blockedNav } = get();
+    if (blockedNav) set({ current: blockedNav, paletteOpen: false, blockedNav: null });
+  },
+  cancelNav: () => set({ blockedNav: null }),
   openPalette: () => set({ paletteOpen: true }),
   closePalette: () => set({ paletteOpen: false }),
 }));
