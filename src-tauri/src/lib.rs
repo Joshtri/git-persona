@@ -14,7 +14,7 @@ use tauri::{
 };
 
 use commands::{
-    activity::activity_list,
+    activity::{activity_list, activity_purge},
     bootstrap::bootstrap_fetch,
     credentials::{
         credential_assign_profile, credential_create, credential_delete, credential_list,
@@ -94,6 +94,7 @@ pub fn run() {
             profile_apply,
             profile_get_active,
             activity_list,
+            activity_purge,
             repo_scan,
             repo_list,
             repo_get,
@@ -158,6 +159,12 @@ pub fn run() {
 /// registration, build the tray, and show/hide the window per the saved
 /// preferences (or the `--hidden` autostart launch flag).
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Notify the Windows Shell that file associations changed so it flushes its
+    // icon cache. This ensures the current .exe icon appears correctly after an
+    // in-place update replaces the binary without running a fresh installer pass.
+    #[cfg(windows)]
+    infra::shell_windows::refresh_icon_cache();
+
     let state = state::AppState::init(app.handle())
         .map_err(|e| format!("fatal: failed to initialise AppState: {e}"))?;
     // Snapshot the launch-relevant preferences before the state is moved into

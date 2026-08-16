@@ -4,6 +4,8 @@ pub(crate) mod credential_store_tauri;
 pub(crate) mod credential_vault_noop;
 #[cfg(windows)]
 pub(crate) mod credential_vault_windows;
+#[cfg(windows)]
+pub(crate) mod shell_windows;
 pub(crate) mod git_config_gix;
 pub(crate) mod git_dir_watcher;
 pub(crate) mod git_meta;

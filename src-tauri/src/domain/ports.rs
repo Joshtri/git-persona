@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use crate::domain::{
     audit::AuditEntry,
     credential::{Credential, CredentialTxn, Secret, VaultSnapshot},
@@ -57,6 +58,9 @@ pub(crate) trait ProfileStore: Send + Sync {
 pub(crate) trait AuditSink: Send + Sync {
     fn append(&self, entry: &AuditEntry) -> Result<(), AppError>;
     fn read_all(&self) -> Result<Vec<AuditEntry>, AppError>;
+    /// Delete every entry whose timestamp is strictly before `cutoff` and
+    /// rewrite the log file. Returns the number of entries removed.
+    fn purge_before(&self, cutoff: DateTime<Utc>) -> Result<u32, AppError>;
 }
 
 pub(crate) trait RepoStore: Send + Sync {

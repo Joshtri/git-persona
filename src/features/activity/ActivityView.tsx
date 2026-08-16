@@ -1,12 +1,32 @@
+import { TrashBin } from "@gravity-ui/icons";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/badge";
+import { Button } from "@/components/button";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { NoResultsState } from "@/components/feedback/NoResultsState";
 import { SearchInput } from "@/components/search-input";
-// import { Avatar, Badge, SearchInput } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { useActivityStore } from "@/stores/activity";
 import { useProfilesStore } from "@/stores/profiles";
+
+type Category = "profile" | "ssh" | "credential" | "identity";
+
+const CATEGORIES: { id: Category; label: string }[] = [
+  { id: "profile", label: "Profile" },
+  { id: "ssh", label: "SSH" },
+  { id: "credential", label: "Credential" },
+  { id: "identity", label: "Identity" },
+];
+
+function actionCategory(action: string): Category | null {
+  if (action.startsWith("profile.")) return "profile";
+  if (action.startsWith("ssh.")) return "ssh";
+  if (action.startsWith("credential.")) return "credential";
+  if (action.startsWith("identity.")) return "identity";
+  return null;
+}
 
 function actionLabel(action: string): string {
   const map: Record<string, string> = {
@@ -68,9 +88,11 @@ function dayLabel(iso: string): string {
 }
 
 export function ActivityView() {
-  const { items, fetch } = useActivityStore();
+  const { items, fetch, purge } = useActivityStore();
   const { items: profiles } = useProfilesStore();
   const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     fetch();
@@ -80,6 +102,7 @@ export function ActivityView() {
     id ? profiles.find((p) => p.id === id) : undefined;
 
   const filtered = items.filter((entry) => {
+    if (activeCategory && actionCategory(entry.action) !== activeCategory) return false;
     if (!query) return true;
     const profile = getProfileById(entry.profile_id);
     return (
@@ -96,6 +119,8 @@ export function ActivityView() {
     groups.get(label)?.push(entry);
   }
 
+  const hasActiveFilter = activeCategory !== null || query.length > 0;
+
   return (
     <div className="flex flex-col gap-4 max-w-xl">
       <div className="flex items-center justify-between">
@@ -103,9 +128,52 @@ export function ActivityView() {
           <h1 className="text-lg font-semibold text-(--color-fg)">Activity</h1>
           <Badge variant="default">{items.length}</Badge>
         </div>
+        {items.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmClear(true)}
+            className="text-(--color-muted) hover:text-danger"
+          >
+            <TrashBin className="size-3.5" aria-hidden="true" />
+            Clear history
+          </Button>
+        )}
       </div>
 
-      <SearchInput value={query} onValueChange={setQuery} placeholder="Search activity…" />
+      <div className="flex flex-col gap-2">
+        <SearchInput value={query} onValueChange={setQuery} placeholder="Search activity…" />
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveCategory(null)}
+            className={cn(
+              "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
+              activeCategory === null
+                ? "bg-brand-500 text-white"
+                : "bg-(--color-surface-3) text-(--color-secondary) hover:text-(--color-fg)"
+            )}
+          >
+            All
+          </button>
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
+              className={cn(
+                "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer",
+                activeCategory === cat.id
+                  ? "bg-brand-500 text-white"
+                  : "bg-(--color-surface-3) text-(--color-secondary) hover:text-(--color-fg)"
+              )}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {items.length === 0 ? (
         <EmptyState
@@ -113,7 +181,7 @@ export function ActivityView() {
           description="Apply or modify profiles to start building an activity history."
         />
       ) : filtered.length === 0 ? (
-        <NoResultsState query={query} />
+        <NoResultsState query={hasActiveFilter ? ((query || activeCategory) ?? "") : ""} />
       ) : (
         <div className="flex flex-col gap-4">
           {Array.from(groups.entries()).map(([day, entries]) => (
@@ -182,6 +250,20 @@ export function ActivityView() {
           ))}
         </div>
       )}
+
+      <ConfirmationDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        tone="danger"
+        icon={TrashBin}
+        title="Clear Activity History"
+        description="This will permanently delete all activity entries. This cannot be undone."
+        confirmLabel="Clear history"
+        onConfirm={async () => {
+          await purge(0);
+          setConfirmClear(false);
+        }}
+      />
     </div>
   );
 }

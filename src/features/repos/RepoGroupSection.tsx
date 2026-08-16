@@ -6,7 +6,9 @@ import { Button } from "@/components/button";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import type { Repo, RepoGroup } from "@/ipc/types.gen";
 import { cn } from "@/lib/cn";
+import { deriveGroupHeaderColor } from "@/lib/color";
 import { useReposStore } from "@/stores/repos";
+import { useSettingsStore } from "@/stores/settings";
 import { RepoCard } from "./RepoCard";
 
 interface Props {
@@ -22,12 +24,19 @@ export function RepoGroupSection({ group, repos, collapsed, onToggle }: Props) {
   const openGroupDialog = useReposStore((s) => s.openGroupDialog);
   const deleteGroup = useReposStore((s) => s.deleteGroup);
 
+  const theme = useSettingsStore((s) => s.data?.theme);
+  const isDark = theme !== "Light";
+
   const dotColor = group?.color ?? "var(--color-muted)";
   const label = group?.name ?? "Ungrouped";
+  const headerBg = group?.color ? deriveGroupHeaderColor(group.color, isDark) : undefined;
 
   return (
     <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-(--color-surface-2)">
+      <div
+        className="flex items-center gap-2 px-3 py-2.5 bg-(--color-surface-2)"
+        style={headerBg ? { backgroundColor: headerBg } : undefined}
+      >
         <button
           type="button"
           onClick={onToggle}

@@ -95,6 +95,10 @@ export async function activityList(): Promise<AuditEntry[]> {
   return invoke<AuditEntry[]>("activity_list");
 }
 
+export async function activityPurge(days: number): Promise<number> {
+  return invoke<number>("activity_purge", { days });
+}
+
 export async function repoScan(paths: string[]): Promise<Repo[]> {
   return invoke<Repo[]>("repo_scan", { paths });
 }
