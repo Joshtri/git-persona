@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { useBlockReload } from "@/hooks/useBlockReload";
 import { useActivityStore } from "@/stores/activity";
 import { useBootstrapStore } from "@/stores/bootstrap";
 import { useOnboardingStore } from "@/stores/onboarding";
@@ -17,6 +18,8 @@ function resolveTheme(preference: string | undefined, systemDark: boolean): "dar
 
 export function App() {
   const { data: settings, fetch: fetchSettings } = useSettingsStore();
+
+  useBlockReload();
 
   useEffect(() => {
     fetchSettings();

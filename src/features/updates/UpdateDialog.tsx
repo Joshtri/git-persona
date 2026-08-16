@@ -37,7 +37,7 @@ export function UpdateDialog() {
     let total = 0;
 
     try {
-       // console.log("[updater] starting downloadAndInstall, update:", update);
+      // console.log("[updater] starting downloadAndInstall, update:", update);
       await update.downloadAndInstall((event) => {
         // console.log("[updater] download event:", event);
         switch (event.event) {

@@ -39,7 +39,6 @@
       "!src-tauri/target",
       "!src-tauri/bindings",
       "!src/ipc/types.gen.ts",
-      "!public/tauri.svg",
       "!src/styles"
     ]
   }

@@ -3,7 +3,6 @@ import {
   Check,
   ChevronsExpandVertical,
   CircleInfo,
-  CodeFork,
   Folder,
   Gear,
   House,
@@ -20,6 +19,7 @@ import { cn } from "@/lib/cn";
 import { useProfilesStore } from "@/stores/profiles";
 import { useViewStore, type ViewName } from "@/stores/view";
 import { Avatar } from "../avatar";
+import { BrandLogo } from "../brand-logo";
 import { Kbd } from "../kbd";
 import { Separator } from "../separator";
 
@@ -210,9 +210,7 @@ export function Sidebar() {
   return (
     <aside className="w-52 flex flex-col shrink-0 border-r border-(--color-border) bg-(--color-surface) select-none">
       <div className="h-11 flex items-center gap-2.5 px-3.5 border-b border-(--color-border)">
-        <div className="size-6 rounded-(--radius-sm) bg-(--color-brand-500) flex items-center justify-center shrink-0">
-          <CodeFork className="size-3.5 text-black dark:text-white" aria-hidden="true" />
-        </div>
+        <BrandLogo size="lg" />
         <span className="text-sm font-semibold text-(--color-fg) tracking-tight">GitPersona</span>
       </div>
 

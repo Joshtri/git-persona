@@ -1,5 +1,6 @@
-import { ArrowUpRightFromSquare, CodeFork, LogoGithub, Star } from "@gravity-ui/icons";
+import { ArrowUpRightFromSquare, LogoGithub, Star } from "@gravity-ui/icons";
 import { Badge } from "@/components/badge";
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/button";
 import { Separator } from "@/components/separator";
 import { useAppVersion } from "@/hooks/useAppVersion";
@@ -25,9 +26,7 @@ export function AboutView() {
     <div className="flex flex-col gap-6 max-w-lg">
       {/* App identity */}
       <div className="flex items-center gap-5">
-        <div className="size-16 rounded-(--radius-xl) bg-(--color-brand-500)/15 border border-(--color-brand-500)/30 flex items-center justify-center shrink-0">
-          <CodeFork className="size-8 text-(--color-brand-400)" aria-hidden="true" />
-        </div>
+        <BrandLogo size="xl" />
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold text-(--color-fg) tracking-tight">GitPersona</h1>
           <p className="text-sm text-(--color-secondary)">Developer Identity Manager</p>
