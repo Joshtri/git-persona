@@ -1719,7 +1719,7 @@ dependencies = [
 
 [[package]]
 name = "gitswitch-desktop"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "argon2",
  "axum",
