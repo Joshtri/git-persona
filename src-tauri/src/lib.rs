@@ -41,6 +41,7 @@ use commands::{
         rule_update,
     },
     settings::{settings_get, settings_set},
+    updater::{updater_check, updater_install},
     ssh::{
         ssh_assign_profile, ssh_config_open, ssh_config_preview, ssh_generate, ssh_import,
         ssh_list, ssh_remove, ssh_reveal, ssh_reveal_folder, ssh_scan,
@@ -150,6 +151,8 @@ pub fn run() {
             onboarding_scan,
             onboarding_apply,
             onboarding_skip,
+            updater_check,
+            updater_install,
         ])
         .run(tauri::generate_context!())
         .expect("fatal: error while running tauri application");

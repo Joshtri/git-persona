@@ -384,3 +384,16 @@ export async function onboardingApply(
 export async function onboardingSkip(): Promise<void> {
   return invoke<void>("onboarding_skip");
 }
+
+export interface UpdateInfo {
+  version: string;
+  body: string | null;
+}
+
+export async function updaterCheck(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("updater_check");
+}
+
+export async function updaterInstall(): Promise<void> {
+  return invoke<void>("updater_install");
+}

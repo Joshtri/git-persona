@@ -8,3 +8,4 @@ pub(crate) mod repos;
 pub(crate) mod rules;
 pub(crate) mod settings;
 pub(crate) mod ssh;
+pub(crate) mod updater;

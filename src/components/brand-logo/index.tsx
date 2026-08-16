@@ -16,7 +16,7 @@ export function BrandLogo({ size = "md", className }: Props) {
   return (
     <>
       <img
-        src="/logo/logo-dark.png"
+        src="/logo/default dark.png"
         alt="GitPersona"
         className={cn(
           "hidden shrink-0 rounded-(--radius-sm) object-cover dark:block",
