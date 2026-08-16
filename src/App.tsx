@@ -46,6 +46,12 @@ export function App() {
 
     apply();
 
+    if (settings?.theme) {
+      try {
+        localStorage.setItem("gitpersona-theme", settings.theme.toLowerCase());
+      } catch (_) {}
+    }
+
     if (settings?.theme === "System") {
       mql.addEventListener("change", apply);
       return () => mql.removeEventListener("change", apply);

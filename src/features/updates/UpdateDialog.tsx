@@ -3,6 +3,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Dialog } from "@/components/dialog";
+import { useBootstrapStore } from "@/stores/bootstrap";
 
 type Phase =
   | { kind: "idle" }
@@ -14,6 +15,7 @@ type Phase =
 export function UpdateDialog() {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [dismissed, setDismissed] = useState(false);
+  const forceUpdate = useBootstrapStore((s) => s.forceUpdate);
   // Held in a ref so the object survives re-renders without going into state.
   const pendingUpdate = useRef<Awaited<ReturnType<typeof check>>>(null);
 
@@ -71,11 +73,13 @@ export function UpdateDialog() {
       phase.kind === "error") &&
     !dismissed;
 
+  const isLocked = forceUpdate && (phase.kind === "available" || phase.kind === "error");
+
   return (
     <Dialog.Root
       open={isVisible}
       onOpenChange={(open) => {
-        if (!open && phase.kind !== "downloading") setDismissed(true);
+        if (!open && phase.kind !== "downloading" && !isLocked) setDismissed(true);
       }}
     >
       {isVisible && (
@@ -90,12 +94,18 @@ export function UpdateDialog() {
                   ? "Update installed. Restarting…"
                   : "Could not download the update. Please try again later."
           }
-          hideClose={phase.kind === "downloading" || phase.kind === "ready"}
+          hideClose={phase.kind === "downloading" || phase.kind === "ready" || isLocked}
           className="max-w-md"
         >
           {phase.kind === "available" && phase.body && (
             <p className="text-sm text-(--color-secondary) leading-relaxed whitespace-pre-line">
               {phase.body}
+            </p>
+          )}
+
+          {phase.kind === "available" && forceUpdate && (
+            <p className="text-sm text-(--color-warning) font-medium">
+              This update is required to continue using GitPersona.
             </p>
           )}
 
@@ -116,17 +126,24 @@ export function UpdateDialog() {
           <Dialog.Footer>
             {phase.kind === "available" && (
               <>
-                <Button type="button" variant="ghost" onClick={() => setDismissed(true)}>
-                  Remind me later
-                </Button>
+                {!forceUpdate && (
+                  <Button type="button" variant="ghost" onClick={() => setDismissed(true)}>
+                    Remind me later
+                  </Button>
+                )}
                 <Button type="button" variant="primary" onClick={handleDownload}>
                   Download & Install
                 </Button>
               </>
             )}
-            {phase.kind === "error" && (
+            {phase.kind === "error" && !forceUpdate && (
               <Button type="button" variant="ghost" onClick={() => setDismissed(true)}>
                 Close
+              </Button>
+            )}
+            {phase.kind === "error" && forceUpdate && (
+              <Button type="button" variant="primary" onClick={handleDownload}>
+                Retry
               </Button>
             )}
           </Dialog.Footer>

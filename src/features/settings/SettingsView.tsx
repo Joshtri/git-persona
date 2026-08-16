@@ -1,19 +1,21 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { CircleExclamationFill } from "@gravity-ui/icons";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
+import { Dialog } from "@/components/dialog";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { Separator } from "@/components/separator";
 import { Switch } from "@/components/switch";
 import { useAppVersion } from "@/hooks/useAppVersion";
-// import { Badge, Button, Separator, Switch } from "@/components/ui";
 import type { AppSettings, Theme } from "@/ipc/types.gen";
 import { useFeedbackStore } from "@/stores/feedback";
 import { useSettingsStore } from "@/stores/settings";
 import { useSmartSwitchStore } from "@/stores/smartSwitch";
+import { useViewStore } from "@/stores/view";
 import { Select, type SelectOption } from "../inputs/non-form/select";
 import { SectionHeader } from "./components/Section.Header";
 import { SettingRow } from "./components/Section.SettingRow";
@@ -52,11 +54,16 @@ export function SettingsView() {
   const patchSmart = useSmartSwitchStore((s) => s.patchSettings);
   const smart = data?.smart_switching ?? DEFAULT_SMART;
 
+  const setGuard = useViewStore((s) => s.setGuard);
+  const blockedNav = useViewStore((s) => s.blockedNav);
+  const confirmNav = useViewStore((s) => s.confirmNav);
+  const cancelNav = useViewStore((s) => s.cancelNav);
+
   useEffect(() => {
     fetch();
   }, [fetch]);
 
-  const { control, handleSubmit, reset, watch, setValue } = useForm<FormData>({
+  const { control, handleSubmit, reset, watch, setValue, formState } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: data ?? {
       theme: "Dark",
@@ -68,9 +75,16 @@ export function SettingsView() {
     },
   });
 
+  const { isDirty } = formState;
+
   useEffect(() => {
     if (data) reset(data);
   }, [data, reset]);
+
+  useEffect(() => {
+    setGuard(isDirty ? () => false : null);
+    return () => setGuard(null);
+  }, [isDirty, setGuard]);
 
   const selectedTheme = watch("theme");
   const showAuditLog = watch("show_audit_log");
@@ -94,7 +108,6 @@ export function SettingsView() {
   }, [selectedTheme]);
 
   const onSubmit = async (values: FormData) => {
-    // Preserve the Smart Switching block, which is managed by its own toggles.
     const base: AppSettings = data ?? {
       theme: "Dark",
       show_audit_log: true,
@@ -109,10 +122,16 @@ export function SettingsView() {
     toast("Settings saved", "success");
   };
 
+  const handleSaveAndLeave = handleSubmit(async (values) => {
+    await onSubmit(values);
+    confirmNav();
+  });
+
   if (loading && !data) return <LoadingState />;
   if (error && !data) return <ErrorState error={error} onRetry={fetch} />;
 
   return (
+    <>
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 max-w-lg">
       {/* Appearance */}
       <section>
@@ -301,5 +320,61 @@ export function SettingsView() {
         </Button>
       </div>
     </form>
+
+    <Dialog.Root
+      open={blockedNav !== null}
+      onOpenChange={(open) => { if (!open) cancelNav(); }}
+    >
+      {blockedNav !== null && (
+        <Dialog.Content
+          title="Unsaved changes"
+          hideClose
+          className="max-w-xs"
+        >
+          <div className="flex flex-col gap-5 -mt-1">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-(--color-warning)/15">
+                <CircleExclamationFill className="size-4 text-(--color-warning)" aria-hidden="true" />
+              </span>
+              <p className="text-sm text-(--color-secondary) leading-relaxed">
+                Your settings haven't been saved yet. Save before leaving, or your changes will be lost.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                className="w-full"
+                onClick={handleSaveAndLeave}
+                disabled={loading}
+              >
+                {loading ? "Saving…" : "Save & leave"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                className="w-full text-(--color-danger) hover:bg-(--color-danger)/10 hover:text-(--color-danger)"
+                onClick={confirmNav}
+              >
+                Discard changes
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                className="w-full"
+                onClick={cancelNav}
+              >
+                Keep editing
+              </Button>
+            </div>
+          </div>
+        </Dialog.Content>
+      )}
+    </Dialog.Root>
+    </>
   );
 }

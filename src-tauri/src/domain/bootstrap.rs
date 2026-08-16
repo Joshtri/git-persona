@@ -9,6 +9,9 @@ pub(crate) struct BootstrapData {
     pub(crate) announcements: Vec<AnnouncementInfo>,
     /// Enabled feature flags keyed by their kebab-case identifier.
     pub(crate) feature_flags: HashMap<String, bool>,
+    /// Whether the server considers the current update mandatory.
+    /// `None` when the server is unreachable or returns no update info.
+    pub(crate) force_update: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

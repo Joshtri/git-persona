@@ -3,6 +3,7 @@
 export interface BootstrapData {
   announcements: AnnouncementInfo[];
   feature_flags: Record<string, boolean>;
+  force_update: boolean | null;
 }
 
 export interface AnnouncementInfo {

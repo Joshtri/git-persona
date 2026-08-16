@@ -16,8 +16,15 @@ struct WireEnvelope {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WireBootstrapData {
+    update: Option<WireUpdateData>,
     announcements: Vec<WireAnnouncement>,
     feature_flags: HashMap<String, bool>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WireUpdateData {
+    force_update: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -64,6 +71,7 @@ fn from_wire(wire: WireBootstrapData) -> BootstrapData {
             })
             .collect(),
         feature_flags: wire.feature_flags,
+        force_update: wire.update.map(|u| u.force_update),
     }
 }
 
