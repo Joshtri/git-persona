@@ -1,7 +1,7 @@
 import { CircleCheck, Key, Pencil, TrashBin } from "@gravity-ui/icons";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/badge";
-// import { Avatar, Badge } from "@/components/ui";
+import { Tooltip } from "@/components/tooltip";
 import type { Profile } from "@/ipc/types.gen";
 import { cn } from "@/lib/cn";
 
@@ -13,7 +13,13 @@ interface Props {
   onApply: (profile: Profile) => void;
 }
 
-export function ProfileCard({ profile, isActive, onEdit, onDelete, onApply }: Props) {
+export function ProfileCard({
+  profile,
+  isActive,
+  onEdit,
+  onDelete,
+  onApply,
+}: Props) {
   return (
     <div
       className={cn(
@@ -21,7 +27,7 @@ export function ProfileCard({ profile, isActive, onEdit, onDelete, onApply }: Pr
         "bg-(--color-surface) cursor-default",
         isActive
           ? "border-(--color-brand-500)/50 bg-(--color-brand-500)/8 shadow-[0_0_0_1px_oklch(62%_0.19_260_/_0.15)]"
-          : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)"
+          : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)",
       )}
     >
       <div
@@ -30,23 +36,35 @@ export function ProfileCard({ profile, isActive, onEdit, onDelete, onApply }: Pr
         aria-hidden="true"
       />
 
-      <div className="flex items-start justify-between pl-2.5">
-        <div className="flex items-center gap-3">
-          <Avatar name={profile.identity.name} color={profile.color} size="lg" />
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-(--color-fg)">{profile.label}</span>
+      <div className="flex items-start justify-between pl-2.5 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar
+            name={profile.identity.name}
+            color={profile.color}
+            size="lg"
+          />
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Tooltip content={profile.label}>
+                <span className="font-semibold text-(--color-fg) truncate">
+                  {profile.label}
+                </span>
+              </Tooltip>
               {isActive && (
-                <Badge variant="success" className="text-[10px]">
+                <Badge variant="success" className="text-[10px] shrink-0">
                   Active
                 </Badge>
               )}
             </div>
-            <span className="text-sm text-(--color-secondary)">{profile.identity.name}</span>
+            <Tooltip content={profile.identity.name}>
+              <span className="text-sm text-(--color-secondary) truncate">
+                {profile.identity.name}
+              </span>
+            </Tooltip>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 transition-opacity opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-1 transition-opacity opacity-0 group-hover:opacity-100 shrink-0 ml-2">
           {!isActive && (
             <button
               type="button"
