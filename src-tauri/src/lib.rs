@@ -33,7 +33,7 @@ use commands::{
     repos::{
         repo_assign_profile, repo_get, repo_group_create, repo_group_delete, repo_group_list,
         repo_group_update, repo_list, repo_refresh, repo_remove, repo_reveal, repo_scan,
-        repo_set_group, repo_toggle_favorite,
+        repo_set_group, repo_set_group_many, repo_toggle_favorite,
     },
     rules::{
         rule_create, rule_delete, rule_duplicate, rule_export, rule_get, rule_import, rule_list,
@@ -109,6 +109,7 @@ pub fn run() {
             repo_group_update,
             repo_group_delete,
             repo_set_group,
+            repo_set_group_many,
             ssh_list,
             ssh_scan,
             ssh_import,

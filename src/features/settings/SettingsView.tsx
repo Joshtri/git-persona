@@ -6,7 +6,7 @@ import { LoadingState } from "@/components/feedback/LoadingState";
 import { Separator } from "@/components/separator";
 import { Switch } from "@/components/switch";
 import { useAppVersion } from "@/hooks/useAppVersion";
-import { updaterCheck, updaterInstall, type UpdateInfo } from "@/ipc/client";
+import { type UpdateInfo, updaterCheck, updaterInstall } from "@/ipc/client";
 import type { AppSettings, Theme } from "@/ipc/types.gen";
 import { useFeedbackStore } from "@/stores/feedback";
 import { useSettingsStore } from "@/stores/settings";
@@ -208,10 +208,7 @@ export function SettingsView() {
             label="Auto SSH"
             description="Follow the profile's SSH identity via the managed ~/.ssh/config."
           >
-            <Switch
-              checked={smart.auto_ssh}
-              onCheckedChange={(v) => patchSmart({ auto_ssh: v })}
-            />
+            <Switch checked={smart.auto_ssh} onCheckedChange={(v) => patchSmart({ auto_ssh: v })} />
           </SettingRow>
           <SettingRow
             label="Auto credential"
@@ -253,10 +250,7 @@ export function SettingsView() {
 
       {/* Experimental */}
       <section>
-        <SectionHeader
-          title="Experimental"
-          description="Features that are still in development."
-        />
+        <SectionHeader title="Experimental" description="Features that are still in development." />
         <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) px-4 overflow-hidden">
           <SettingRow
             label="Repository auto-detect"

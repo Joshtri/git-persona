@@ -21,7 +21,7 @@ export function GroupFormDialog() {
   const closeGroupDialog = useReposStore((s) => s.closeGroupDialog);
   const createGroup = useReposStore((s) => s.createGroup);
   const updateGroup = useReposStore((s) => s.updateGroup);
-  const setGroup = useReposStore((s) => s.setGroup);
+  const setGroupMany = useReposStore((s) => s.setGroupMany);
 
   const editing = groupDialog?.editing ?? null;
   const isEdit = editing !== null;
@@ -48,8 +48,8 @@ export function GroupFormDialog() {
       return;
     }
     const newId = await createGroup(name.trim(), color);
-    if (newId && groupDialog.assignRepoId) {
-      await setGroup(groupDialog.assignRepoId, newId);
+    if (newId && groupDialog.assignRepoIds?.length) {
+      await setGroupMany(groupDialog.assignRepoIds, newId);
     }
     setSubmitting(false);
     if (newId) closeGroupDialog();

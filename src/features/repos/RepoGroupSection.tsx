@@ -1,5 +1,13 @@
 import { Popover } from "@base-ui/react/popover";
-import { ChevronDown, ChevronRight, EllipsisVertical, Pencil, TrashBin } from "@gravity-ui/icons";
+import {
+  ChevronDown,
+  ChevronRight,
+  EllipsisVertical,
+  FolderOpen,
+  MagnifierPlus,
+  Pencil,
+  TrashBin,
+} from "@gravity-ui/icons";
 import { useState } from "react";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
@@ -16,13 +24,27 @@ interface Props {
   repos: Repo[];
   collapsed: boolean;
   onToggle: () => void;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
-export function RepoGroupSection({ group, repos, collapsed, onToggle }: Props) {
+export function RepoGroupSection({
+  group,
+  repos,
+  collapsed,
+  onToggle,
+  selectable,
+  selectedIds,
+  onToggleSelect,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const openGroupDialog = useReposStore((s) => s.openGroupDialog);
   const deleteGroup = useReposStore((s) => s.deleteGroup);
+  const scanIntoGroup = useReposStore((s) => s.scanIntoGroup);
+  const quickScanGroup = useReposStore((s) => s.quickScanGroup);
+  const scanning = useReposStore((s) => s.scanning);
 
   const theme = useSettingsStore((s) => s.data?.theme);
   const isDark = theme !== "Light";
@@ -75,11 +97,35 @@ export function RepoGroupSection({ group, repos, collapsed, onToggle }: Props) {
                     size="menu"
                     onClick={() => {
                       setMenuOpen(false);
-                      openGroupDialog({ editing: group, assignRepoId: null });
+                      openGroupDialog({ editing: group, assignRepoIds: null });
                     }}
                   >
                     <Pencil className="size-3.5 text-(--color-muted)" aria-hidden="true" />
                     Rename / recolor
+                  </Button>
+                  <Button
+                    variant="menu"
+                    size="menu"
+                    disabled={scanning || repos.length === 0}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void quickScanGroup(group.id);
+                    }}
+                  >
+                    <MagnifierPlus className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+                    {scanning ? "Scanning…" : "Quick scan for new repos"}
+                  </Button>
+                  <Button
+                    variant="menu"
+                    size="menu"
+                    disabled={scanning}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void scanIntoGroup(group.id);
+                    }}
+                  >
+                    <FolderOpen className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+                    {scanning ? "Scanning…" : "Scan repos into this group"}
                   </Button>
                   <Button
                     variant="menu-danger"
@@ -107,7 +153,13 @@ export function RepoGroupSection({ group, repos, collapsed, onToggle }: Props) {
         ) : (
           <div className="border-t border-(--color-border)">
             {repos.map((repo) => (
-              <RepoCard key={repo.id} repo={repo} />
+              <RepoCard
+                key={repo.id}
+                repo={repo}
+                selectable={selectable}
+                selected={selectedIds?.has(repo.id)}
+                onToggleSelect={onToggleSelect ? () => onToggleSelect(repo.id) : undefined}
+              />
             ))}
           </div>
         ))}

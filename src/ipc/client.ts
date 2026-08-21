@@ -155,6 +155,10 @@ export async function repoSetGroup(id: string, groupId: string | null): Promise<
   return invoke<Repo>("repo_set_group", { id, groupId });
 }
 
+export async function repoSetGroupMany(ids: string[], groupId: string | null): Promise<Repo[]> {
+  return invoke<Repo[]>("repo_set_group_many", { ids, groupId });
+}
+
 export async function sshList(): Promise<SshKey[]> {
   return invoke<SshKey[]>("ssh_list");
 }

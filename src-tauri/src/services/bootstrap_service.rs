@@ -4,7 +4,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
-const DEFAULT_SERVER_URL: &str = "https://api.gitpersona.app";
+const DEFAULT_SERVER_URL: &str = "https://api-gitpersona.vercel.app";
 
 // --- Wire types: camelCase deserialization from the server's JSON response ---
 

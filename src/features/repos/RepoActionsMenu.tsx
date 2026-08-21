@@ -100,7 +100,9 @@ export function RepoActionsMenu({ repo }: Props) {
             <Button
               variant="menu"
               size="menu"
-              onClick={() => run(() => openGroupDialog({ editing: null, assignRepoId: repo.id }))}
+              onClick={() =>
+                run(() => openGroupDialog({ editing: null, assignRepoIds: [repo.id] }))
+              }
             >
               <Plus className="size-3.5 text-(--color-muted)" aria-hidden="true" />
               New group…

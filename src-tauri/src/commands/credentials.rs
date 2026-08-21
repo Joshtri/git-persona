@@ -67,8 +67,19 @@ pub(crate) async fn credential_update(
     token: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Credential, AppError> {
+    let rotated = token.is_some();
     let secret = token.map(Zeroizing::new);
-    state.credentials.update(id, username, secret.as_ref())
+    let credential = state.credentials.update(id, username, secret.as_ref())?;
+    // A rotated token only lands in the backing vault slot. Re-promote it onto
+    // the canonical and per-repo path-scoped targets that Git actually reads, so
+    // an assigned profile keeps pushing without a manual re-assignment. Best-
+    // effort: the token is already saved, so a re-pin hiccup must not fail here.
+    if rotated {
+        if let Some(profile_id) = credential.profile_id {
+            let _ = state.profiles.repin_credentials(profile_id);
+        }
+    }
+    Ok(credential)
 }
 
 #[tauri::command]

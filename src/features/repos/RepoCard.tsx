@@ -1,7 +1,9 @@
 import {
   BranchesDown,
+  Check,
   Clock,
   Folder,
+  Square,
   Star,
   StarFill,
   TriangleExclamation,
@@ -14,6 +16,9 @@ import { RepoActionsMenu } from "./RepoActionsMenu";
 
 interface Props {
   repo: Repo;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 function timeAgo(iso: string | null): string | null {
@@ -33,7 +38,7 @@ function remoteHost(remote: string | null): string | null {
   return match?.[1] ?? null;
 }
 
-export function RepoCard({ repo }: Props) {
+export function RepoCard({ repo, selectable, selected, onToggleSelect }: Props) {
   const toggleFavorite = useReposStore((s) => s.toggleFavorite);
   const updated = timeAgo(repo.last_opened ?? repo.detected_at);
   const host = remoteHost(repo.remote_origin);
@@ -45,28 +50,50 @@ export function RepoCard({ repo }: Props) {
         "flex items-center gap-4 px-4 py-3 transition-colors border-b border-(--color-border) last:border-b-0",
         missing
           ? "border-l-2 border-l-(--color-warning) bg-(--color-warning)/5 hover:bg-(--color-warning)/10"
-          : "hover:bg-(--color-surface-2)"
+          : "hover:bg-(--color-surface-2)",
+        selectable && selected && "bg-(--color-brand-500)/10 hover:bg-(--color-brand-500)/15"
       )}
       title={missing ? `Folder not found: ${repo.path}` : undefined}
     >
-      <button
-        type="button"
-        onClick={() => toggleFavorite(repo.id)}
-        className={cn(
-          "flex size-8 items-center justify-center rounded-(--radius-md) border shrink-0 transition-colors",
-          repo.favorite
-            ? "border-(--color-warning)/40 bg-(--color-warning)/10 text-(--color-warning)"
-            : "border-(--color-border) bg-(--color-surface-2) text-(--color-muted) hover:text-(--color-fg)"
-        )}
-        aria-label={repo.favorite ? "Unfavorite repository" : "Favorite repository"}
-        aria-pressed={repo.favorite}
-      >
-        {repo.favorite ? (
-          <StarFill className="size-4" aria-hidden="true" />
-        ) : (
-          <Star className="size-4" aria-hidden="true" />
-        )}
-      </button>
+      {selectable ? (
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-(--radius-md) border shrink-0 transition-colors",
+            selected
+              ? "border-(--color-brand-500) bg-(--color-brand-500) text-white"
+              : "border-(--color-border) bg-(--color-surface-2) text-(--color-muted) hover:text-(--color-fg)"
+          )}
+          aria-label={selected ? "Deselect repository" : "Select repository"}
+          aria-pressed={selected}
+        >
+          {selected ? (
+            <Check className="size-4" aria-hidden="true" />
+          ) : (
+            <Square className="size-3.5" aria-hidden="true" />
+          )}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => toggleFavorite(repo.id)}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-(--radius-md) border shrink-0 transition-colors",
+            repo.favorite
+              ? "border-(--color-warning)/40 bg-(--color-warning)/10 text-(--color-warning)"
+              : "border-(--color-border) bg-(--color-surface-2) text-(--color-muted) hover:text-(--color-fg)"
+          )}
+          aria-label={repo.favorite ? "Unfavorite repository" : "Favorite repository"}
+          aria-pressed={repo.favorite}
+        >
+          {repo.favorite ? (
+            <StarFill className="size-4" aria-hidden="true" />
+          ) : (
+            <Star className="size-4" aria-hidden="true" />
+          )}
+        </button>
+      )}
 
       <div className="flex flex-col gap-0.5 flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">

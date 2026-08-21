@@ -248,6 +248,26 @@ impl RepoService {
         self.log("repo.group.assign", Some(repo.path.clone()), None)?;
         Ok(repo)
     }
+
+    /// Move several repos into a group (or out of any group) in one call.
+    pub(crate) fn set_group_many(
+        &self,
+        ids: Vec<Uuid>,
+        group_id: Option<Uuid>,
+    ) -> Result<Vec<Repo>, AppError> {
+        if let Some(gid) = group_id {
+            self.find_group(gid)?;
+        }
+        let mut moved = Vec::with_capacity(ids.len());
+        for id in ids {
+            let mut repo = self.get(id)?;
+            repo.group_id = group_id;
+            self.store.save(&repo)?;
+            self.log("repo.group.assign", Some(repo.path.clone()), None)?;
+            moved.push(repo);
+        }
+        Ok(moved)
+    }
 }
 
 #[cfg(test)]
@@ -380,6 +400,12 @@ mod tests {
         }
         fn read_all(&self) -> Result<Vec<AuditEntry>, AppError> {
             Ok(self.entries.lock().unwrap().clone())
+        }
+        fn purge_before(&self, cutoff: chrono::DateTime<Utc>) -> Result<u32, AppError> {
+            let mut entries = self.entries.lock().unwrap();
+            let before = entries.len();
+            entries.retain(|e| e.timestamp >= cutoff);
+            Ok(u32::try_from(before - entries.len()).unwrap_or(u32::MAX))
         }
     }
 

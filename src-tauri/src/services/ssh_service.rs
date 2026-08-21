@@ -456,6 +456,12 @@ mod tests {
         fn read_all(&self) -> Result<Vec<AuditEntry>, AppError> {
             Ok(self.entries.lock().unwrap().clone())
         }
+        fn purge_before(&self, cutoff: chrono::DateTime<Utc>) -> Result<u32, AppError> {
+            let mut entries = self.entries.lock().unwrap();
+            let before = entries.len();
+            entries.retain(|e| e.timestamp >= cutoff);
+            Ok(u32::try_from(before - entries.len()).unwrap_or(u32::MAX))
+        }
     }
 
     // ---- fixtures --------------------------------------------------------

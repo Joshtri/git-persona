@@ -13,13 +13,7 @@ interface Props {
   onApply: (profile: Profile) => void;
 }
 
-export function ProfileCard({
-  profile,
-  isActive,
-  onEdit,
-  onDelete,
-  onApply,
-}: Props) {
+export function ProfileCard({ profile, isActive, onEdit, onDelete, onApply }: Props) {
   return (
     <div
       className={cn(
@@ -27,7 +21,7 @@ export function ProfileCard({
         "bg-(--color-surface) cursor-default",
         isActive
           ? "border-(--color-brand-500)/50 bg-(--color-brand-500)/8 shadow-[0_0_0_1px_oklch(62%_0.19_260_/_0.15)]"
-          : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)",
+          : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)"
       )}
     >
       <div
@@ -38,17 +32,11 @@ export function ProfileCard({
 
       <div className="flex items-start justify-between pl-2.5 min-w-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar
-            name={profile.identity.name}
-            color={profile.color}
-            size="lg"
-          />
+          <Avatar name={profile.identity.name} color={profile.color} size="lg" />
           <div className="flex flex-col gap-0.5 min-w-0">
             <div className="flex items-center gap-2 min-w-0">
               <Tooltip content={profile.label}>
-                <span className="font-semibold text-(--color-fg) truncate">
-                  {profile.label}
-                </span>
+                <span className="font-semibold text-(--color-fg) truncate">{profile.label}</span>
               </Tooltip>
               {isActive && (
                 <Badge variant="success" className="text-[10px] shrink-0">

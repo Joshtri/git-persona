@@ -1,4 +1,5 @@
-import { Folder, FolderPlus, MagnifierPlus } from "@gravity-ui/icons";
+import { Popover } from "@base-ui/react/popover";
+import { Check, Folder, FolderPlus, MagnifierPlus, Plus, Square } from "@gravity-ui/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/button";
@@ -70,12 +71,24 @@ function sortRepos(repos: Repo[], sort: SortKey): Repo[] {
 }
 
 export function ReposView() {
-  const { items, groups, loading, scanning, progress, error, scan, fetch, openGroupDialog } =
-    useReposStore();
+  const {
+    items,
+    groups,
+    loading,
+    scanning,
+    progress,
+    error,
+    scan,
+    fetch,
+    openGroupDialog,
+    setGroupMany,
+  } = useReposStore();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Reload persisted repos on open, and ensure profiles are loaded so each
   // repo's assigned-profile badge resolves to a label.
@@ -124,6 +137,22 @@ export function ReposView() {
       return next;
     });
 
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  };
+
   const showScanning = scanning && items.length === 0;
 
   return (
@@ -137,7 +166,26 @@ export function ReposView() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => openGroupDialog({ editing: null, assignRepoId: null })}
+            onClick={() => {
+              if (selecting) {
+                stopSelecting();
+              } else {
+                setSelecting(true);
+              }
+            }}
+            aria-pressed={selecting}
+          >
+            {selecting ? (
+              <Check className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Square className="size-3.5" aria-hidden="true" />
+            )}
+            {selecting ? "Cancel" : "Select"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => openGroupDialog({ editing: null, assignRepoIds: null })}
           >
             <FolderPlus className="size-3.5" aria-hidden="true" />
             New group
@@ -198,6 +246,85 @@ export function ReposView() {
         ))}
       </div>
 
+      {selecting && (
+        <div className="flex items-center justify-between gap-2 rounded-(--radius-md) border border-(--color-brand-500)/30 bg-(--color-brand-500)/10 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="default" className="text-[10px]">
+              {selectedIds.size}
+            </Badge>
+            <span className="text-xs text-(--color-fg)">
+              {selectedIds.size === 1 ? "repository selected" : "repositories selected"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </Button>
+            )}
+            <Popover.Root>
+              <Popover.Trigger
+                render={
+                  <Button variant="primary" size="sm" disabled={selectedIds.size === 0}>
+                    <FolderPlus className="size-3.5" aria-hidden="true" />
+                    Move to group
+                  </Button>
+                }
+              />
+              <Popover.Portal>
+                <Popover.Positioner sideOffset={6} align="end">
+                  <Popover.Popup className="z-50 min-w-44 rounded-(--radius-md) border border-(--color-border) p-1 shadow-(--shadow-md) outline-none bg-(--color-surface)">
+                    <p className="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-(--color-muted)">
+                      Move to group
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void setGroupMany([...selectedIds], null);
+                        setSelectedIds(new Set());
+                      }}
+                      className="flex w-full items-center justify-between gap-2 rounded-(--radius-sm) px-2.5 py-1.5 text-left text-xs text-(--color-secondary) hover:bg-(--color-surface-2)"
+                    >
+                      Ungrouped
+                    </button>
+                    {groups.map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => {
+                          void setGroupMany([...selectedIds], group.id);
+                          setSelectedIds(new Set());
+                        }}
+                        className="flex w-full items-center justify-between gap-2 rounded-(--radius-sm) px-2.5 py-1.5 text-left text-xs text-(--color-fg) hover:bg-(--color-surface-2)"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: group.color ?? "#6366f1" }}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate">{group.name}</span>
+                        </span>
+                      </button>
+                    ))}
+                    <Button
+                      variant="menu"
+                      size="menu"
+                      onClick={() =>
+                        openGroupDialog({ editing: null, assignRepoIds: [...selectedIds] })
+                      }
+                    >
+                      <Plus className="size-3.5 text-(--color-muted)" aria-hidden="true" />
+                      New group…
+                    </Button>
+                  </Popover.Popup>
+                </Popover.Positioner>
+              </Popover.Portal>
+            </Popover.Root>
+          </div>
+        </div>
+      )}
+
       {error ? (
         <div className="rounded-(--radius-xl) bg-(--color-surface) border border-(--color-border) overflow-hidden">
           <ErrorState error={error} onRetry={fetch} />
@@ -233,6 +360,9 @@ export function ReposView() {
               repos={section.repos}
               collapsed={collapsed.has(section.key)}
               onToggle={() => toggle(section.key)}
+              selectable={selecting}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
           ))}
         </div>

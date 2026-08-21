@@ -13,6 +13,7 @@ import {
   repoReveal,
   repoScan,
   repoSetGroup,
+  repoSetGroupMany,
   repoToggleFavorite,
 } from "@/ipc";
 import { type AppError, toAppError } from "@/ipc/errors";
@@ -23,8 +24,8 @@ import { useSmartSwitchStore } from "@/stores/smartSwitch";
 
 export interface GroupDialogState {
   editing: RepoGroup | null;
-  // When set, the repo to move into the group right after it is created.
-  assignRepoId: string | null;
+  // When set, the repo(s) to move into the group right after it is created.
+  assignRepoIds: string[] | null;
 }
 
 interface ReposStore {
@@ -39,6 +40,8 @@ interface ReposStore {
   closeGroupDialog: () => void;
   fetch: () => Promise<void>;
   scan: () => Promise<void>;
+  scanIntoGroup: (groupId: string) => Promise<void>;
+  quickScanGroup: (groupId: string) => Promise<void>;
   refresh: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   assignProfile: (id: string, profileId: string | null) => Promise<void>;
@@ -49,10 +52,18 @@ interface ReposStore {
   updateGroup: (id: string, name: string, color: string | null) => Promise<boolean>;
   deleteGroup: (id: string) => Promise<void>;
   setGroup: (id: string, groupId: string | null) => Promise<void>;
+  setGroupMany: (ids: string[], groupId: string | null) => Promise<void>;
 }
 
 function replaceItem(items: Repo[], repo: Repo): Repo[] {
   return items.map((r) => (r.id === repo.id ? repo : r));
+}
+
+// Parent directory of an absolute path, handling both Windows and POSIX
+// separators so a group's repos can be re-scanned from where they live.
+function parentDir(path: string): string {
+  const idx = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return idx <= 0 ? path : path.slice(0, idx);
 }
 
 export const useReposStore = create<ReposStore>((set, get) => ({
@@ -96,6 +107,95 @@ export const useReposStore = create<ReposStore>((set, get) => ({
       feedback.toast(`Scan complete — ${items.length} repositories`, "success");
       useActivityStore.getState().fetch();
       // Newly discovered repositories should join the watch set.
+      useSmartSwitchStore.getState().refreshWatch();
+    } catch (e) {
+      const err = toAppError(e);
+      set({ error: err, scanning: false, progress: null });
+      feedback.toast(err.message, "error");
+    } finally {
+      unlisten();
+    }
+  },
+
+  scanIntoGroup: async (groupId) => {
+    const feedback = useFeedbackStore.getState();
+    let paths: string[];
+    try {
+      paths = await pickFolders();
+    } catch (e) {
+      feedback.toast(toAppError(e).message, "error");
+      return;
+    }
+    if (paths.length === 0) return;
+
+    set({ scanning: true, error: null, progress: null });
+    const unlisten = await onRepoScanProgress((progress) => set({ progress }));
+    try {
+      const before = new Set(get().items.map((r) => r.git_root));
+      const items = await repoScan(paths);
+      const fresh = items.filter((r) => !before.has(r.git_root));
+      if (fresh.length > 0) {
+        const updated = await repoSetGroupMany(
+          fresh.map((r) => r.id),
+          groupId
+        );
+        const byId = new Map(updated.map((r) => [r.id, r]));
+        set({ items: items.map((r) => byId.get(r.id) ?? r), scanning: false, progress: null });
+      } else {
+        set({ items, scanning: false, progress: null });
+      }
+      feedback.toast(
+        fresh.length > 0
+          ? `Scan complete — ${fresh.length} repositories added to group`
+          : "Scan complete — no new repositories",
+        "success"
+      );
+      useActivityStore.getState().fetch();
+      useSmartSwitchStore.getState().refreshWatch();
+    } catch (e) {
+      const err = toAppError(e);
+      set({ error: err, scanning: false, progress: null });
+      feedback.toast(err.message, "error");
+    } finally {
+      unlisten();
+    }
+  },
+
+  quickScanGroup: async (groupId) => {
+    const feedback = useFeedbackStore.getState();
+    const groupRepos = get().items.filter((r) => r.group_id === groupId);
+    if (groupRepos.length === 0) {
+      feedback.toast(
+        'No repositories in this group yet — use "Scan repos into this group" first',
+        "info"
+      );
+      return;
+    }
+    const dirs = [...new Set(groupRepos.map((r) => parentDir(r.git_root)))];
+
+    set({ scanning: true, error: null, progress: null });
+    const unlisten = await onRepoScanProgress((progress) => set({ progress }));
+    try {
+      const before = new Set(get().items.map((r) => r.git_root));
+      const items = await repoScan(dirs);
+      const fresh = items.filter((r) => !before.has(r.git_root));
+      if (fresh.length > 0) {
+        const updated = await repoSetGroupMany(
+          fresh.map((r) => r.id),
+          groupId
+        );
+        const byId = new Map(updated.map((r) => [r.id, r]));
+        set({ items: items.map((r) => byId.get(r.id) ?? r), scanning: false, progress: null });
+      } else {
+        set({ items, scanning: false, progress: null });
+      }
+      feedback.toast(
+        fresh.length > 0
+          ? `Quick scan complete — ${fresh.length} added to group`
+          : "Quick scan complete — no new repositories",
+        "success"
+      );
+      useActivityStore.getState().fetch();
       useSmartSwitchStore.getState().refreshWatch();
     } catch (e) {
       const err = toAppError(e);
@@ -213,6 +313,23 @@ export const useReposStore = create<ReposStore>((set, get) => ({
     try {
       const repo = await repoSetGroup(id, groupId);
       set({ items: replaceItem(get().items, repo) });
+    } catch (e) {
+      useFeedbackStore.getState().toast(toAppError(e).message, "error");
+    }
+  },
+
+  setGroupMany: async (ids, groupId) => {
+    if (ids.length === 0) return;
+    try {
+      const updated = await repoSetGroupMany(ids, groupId);
+      const byId = new Map(updated.map((r) => [r.id, r]));
+      set({ items: get().items.map((r) => byId.get(r.id) ?? r) });
+      useFeedbackStore
+        .getState()
+        .toast(
+          `Moved ${updated.length} ${updated.length === 1 ? "repository" : "repositories"}`,
+          "success"
+        );
     } catch (e) {
       useFeedbackStore.getState().toast(toAppError(e).message, "error");
     }

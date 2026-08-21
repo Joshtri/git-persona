@@ -279,6 +279,48 @@ impl ProfileService {
         Ok(())
     }
 
+    /// Re-apply a profile's HTTPS credential everywhere it is currently in force,
+    /// after its token was rotated. A rotated token is written only to the
+    /// credential's backing vault slot; Git reads the canonical and path-scoped
+    /// targets, which still hold the stale token until they are re-promoted. This
+    /// automates what a manual per-repository re-assignment used to do:
+    ///
+    /// - promotes the refreshed secret onto the canonical target when this
+    ///   profile is the globally active one, and
+    /// - re-pins the path-scoped credential for every repository assigned to the
+    ///   profile whose remote resolves to a supported HTTPS host.
+    ///
+    /// Best-effort per target so one bad repository (moved, non-HTTPS, missing
+    /// backing) never aborts the rest. Repositories driven only by a rule (not a
+    /// manual assignment) are refreshed on the next launch/reconcile pin pass.
+    pub(crate) fn repin_credentials(&self, profile_id: Uuid) -> Result<(), AppError> {
+        // Refresh the globally active credential when this profile owns it.
+        if self.store.get_active_id()? == Some(profile_id) {
+            let _ = self.credentials.switch_profile(profile_id);
+        }
+        // Refresh every per-repo pin for repositories assigned to this profile.
+        let mut repinned = 0u32;
+        for repo in self.repos.load_all()? {
+            if repo.active_profile_id != Some(profile_id) {
+                continue;
+            }
+            if self
+                .pin_local_credential(Path::new(&repo.git_root), profile_id)
+                .is_ok()
+            {
+                repinned += 1;
+            }
+        }
+        self.audit.append(&AuditEntry {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            action: "credential.repin".into(),
+            profile_id: Some(profile_id),
+            repo_path: Some(format!("{repinned} repositories")),
+        })?;
+        Ok(())
+    }
+
     fn apply_git_config(&self, identity: &Identity) -> Result<(), AppError> {
         self.git_config.set_global_name(&identity.name)?;
         self.git_config.set_global_email(&identity.email)?;
@@ -501,6 +543,12 @@ mod tests {
         }
         fn read_all(&self) -> Result<Vec<AuditEntry>, AppError> {
             Ok(self.entries.lock().unwrap().clone())
+        }
+        fn purge_before(&self, cutoff: chrono::DateTime<Utc>) -> Result<u32, AppError> {
+            let mut entries = self.entries.lock().unwrap();
+            let before = entries.len();
+            entries.retain(|e| e.timestamp >= cutoff);
+            Ok(u32::try_from(before - entries.len()).unwrap_or(u32::MAX))
         }
     }
 
@@ -854,6 +902,77 @@ mod tests {
                 "Joshtri/landing-page-dolphin-laundry.git".to_string()
             )]
         );
+    }
+
+    #[test]
+    fn repin_credentials_refreshes_canonical_and_assigned_repos() {
+        let pid = Uuid::new_v4();
+        let profile = Profile {
+            id: pid,
+            label: "Joshtri".into(),
+            identity: identity("joshtri@users.noreply.github.com"),
+            color: None,
+        };
+        let repo = Repo {
+            id: Uuid::new_v4(),
+            name: "laundry".into(),
+            path: "/tmp/laundry".into(),
+            git_root: "/tmp/laundry".into(),
+            active_branch: None,
+            active_profile_id: Some(pid),
+            remote_origin: Some(
+                "https://github.com/Joshtri/landing-page-dolphin-laundry.git".into(),
+            ),
+            last_opened: None,
+            favorite: false,
+            detected_at: Utc::now(),
+            group_id: None,
+            path_exists: true,
+        };
+        let creds = Arc::new(MockCredentialSync::default());
+        let (svc, _git, audit, creds) =
+            make_service_full(vec![profile], vec![repo], creds.clone());
+        // Make the rotated profile the globally active one.
+        svc.apply(pid).unwrap();
+        creds.switched.lock().unwrap().clear();
+
+        svc.repin_credentials(pid).unwrap();
+
+        // Canonical refreshed because the profile is active.
+        assert_eq!(creds.switched.lock().unwrap().as_slice(), &[pid]);
+        // The assigned repo's path-scoped credential was re-pinned.
+        assert_eq!(
+            creds.pinned.lock().unwrap().as_slice(),
+            &[(
+                pid,
+                "github.com".to_string(),
+                "Joshtri/landing-page-dolphin-laundry.git".to_string()
+            )]
+        );
+        assert!(audit
+            .read_all()
+            .unwrap()
+            .iter()
+            .any(|e| e.action == "credential.repin"));
+    }
+
+    #[test]
+    fn repin_credentials_skips_canonical_when_profile_inactive() {
+        let pid = Uuid::new_v4();
+        let profile = Profile {
+            id: pid,
+            label: "Work".into(),
+            identity: identity("work@example.com"),
+            color: None,
+        };
+        let creds = Arc::new(MockCredentialSync::default());
+        let (svc, _git, _audit, creds) = make_service_full(vec![profile], vec![], creds.clone());
+        // No profile applied → none active.
+
+        svc.repin_credentials(pid).unwrap();
+
+        // Another profile owns the canonical target; it must not be touched.
+        assert!(creds.switched.lock().unwrap().is_empty());
     }
 
     #[test]

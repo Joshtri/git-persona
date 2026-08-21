@@ -130,3 +130,12 @@ pub(crate) async fn repo_set_group(
 ) -> Result<Repo, AppError> {
     state.repos.set_group(id, group_id)
 }
+
+#[tauri::command]
+pub(crate) async fn repo_set_group_many(
+    ids: Vec<Uuid>,
+    group_id: Option<Uuid>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Repo>, AppError> {
+    state.repos.set_group_many(ids, group_id)
+}
