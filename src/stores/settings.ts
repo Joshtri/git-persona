@@ -23,6 +23,11 @@ const defaults: AppSettings = {
     confirm_before_switch: false,
     start_on_launch: false,
   },
+  commit_guard: {
+    enabled: false,
+    mode: "Warn",
+    auto_protect: false,
+  },
   onboarded: false,
   launch_at_startup: false,
   start_minimized: false,

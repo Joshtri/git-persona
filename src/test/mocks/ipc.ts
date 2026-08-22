@@ -13,6 +13,11 @@ export const mockSettings: AppSettings = {
     confirm_before_switch: false,
     start_on_launch: false,
   },
+  commit_guard: {
+    enabled: false,
+    mode: "Warn",
+    auto_protect: false,
+  },
   onboarded: true,
   launch_at_startup: false,
   start_minimized: false,
@@ -26,6 +31,13 @@ const mockSmartStatus = {
   repos_monitored: 0,
   last_switch: null,
   started_at: null,
+};
+
+const mockPlatformCapabilities = {
+  os: "Windows",
+  credential_vault: "Available",
+  native_credential_manager: "Available",
+  git_credential_integration: "Available",
 };
 
 vi.mock("@/ipc/client", () => ({
@@ -60,6 +72,7 @@ vi.mock("@/ipc/client", () => ({
   ruleReorder: vi.fn().mockResolvedValue([]),
   rulePreview: vi.fn().mockResolvedValue({ matched: null }),
   ruleSummary: vi.fn().mockResolvedValue({ active: 0, disabled: 0, last_match: null }),
+  platformCapabilities: vi.fn().mockResolvedValue(mockPlatformCapabilities),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({

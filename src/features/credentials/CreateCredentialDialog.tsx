@@ -71,7 +71,7 @@ export function CreateCredentialDialog({ open, onOpenChange }: Props) {
     >
       <Dialog.Content
         title="Add HTTPS Credential"
-        description="Stored securely in the Windows Credential Manager. GitPersona keeps only metadata — never the token."
+        description="Stored securely in your OS credential vault. GitPersona keeps only metadata — never the token."
       >
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <Field label="Host" error={errors.host?.message} required>

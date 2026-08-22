@@ -1,8 +1,10 @@
 pub(crate) mod activity;
 pub(crate) mod bootstrap;
+pub(crate) mod commit_guard;
 pub(crate) mod credentials;
 pub(crate) mod identity_switch;
 pub(crate) mod onboarding;
+pub(crate) mod platform;
 pub(crate) mod profiles;
 pub(crate) mod repos;
 pub(crate) mod rules;

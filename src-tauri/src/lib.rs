@@ -16,6 +16,11 @@ use tauri::{
 use commands::{
     activity::{activity_list, activity_purge},
     bootstrap::bootstrap_fetch,
+    commit_guard::{
+        commit_guard_install, commit_guard_repair, commit_guard_set_auto_protect,
+        commit_guard_set_enabled, commit_guard_set_mode, commit_guard_status,
+        commit_guard_uninstall,
+    },
     credentials::{
         credential_assign_profile, credential_create, credential_delete, credential_list,
         credential_open_manager, credential_reveal, credential_set_pin, credential_switch,
@@ -26,6 +31,7 @@ use commands::{
         smart_switch_resume, smart_switch_set_enabled, smart_switch_status,
     },
     onboarding::{onboarding_apply, onboarding_scan, onboarding_skip},
+    platform::platform_capabilities,
     profiles::{
         profile_apply, profile_create, profile_delete, profile_get_active, profile_list,
         profile_update,
@@ -96,6 +102,13 @@ pub fn run() {
             profile_get_active,
             activity_list,
             activity_purge,
+            commit_guard_status,
+            commit_guard_set_enabled,
+            commit_guard_set_mode,
+            commit_guard_set_auto_protect,
+            commit_guard_install,
+            commit_guard_repair,
+            commit_guard_uninstall,
             repo_scan,
             repo_list,
             repo_get,
@@ -129,6 +142,7 @@ pub fn run() {
             credential_reveal,
             credential_set_pin,
             credential_open_manager,
+            platform_capabilities,
             rule_list,
             rule_get,
             rule_create,
@@ -267,17 +281,19 @@ mod export_bindings {
     use crate::domain::{
         audit::AuditEntry,
         bootstrap::{AnnouncementAction, AnnouncementInfo, BootstrapData},
+        commit_guard::{CommitGuardStatus, HookState, RepoGuardStatus},
         credential::{Credential, Protocol},
         identity::Identity,
         identity_switch::{SmartSwitchStatus, SwitchEvent, SwitchStatus},
         onboarding::{DetectedCredential, DetectedIdentity, DetectedSshKey, SystemScan},
+        platform::{CapabilityStatus, PlatformCapabilities, PlatformOs},
         profile::Profile,
         repo::{Repo, RepoGroup, ScanProgress},
         rule::{
             Rule, RuleCondition, RuleMatch, RuleOperator, RulePreviewInput, RulePreviewResult,
             RuleSubject, RuleSummary,
         },
-        settings::{AppSettings, SmartSwitchingSettings, Theme},
+        settings::{AppSettings, CommitGuardSettings, GuardMode, SmartSwitchingSettings, Theme},
         ssh::{SshAlgorithm, SshKey},
     };
     use ts_rs::TS;
@@ -296,10 +312,18 @@ mod export_bindings {
         AppSettings::export_all_to("../src/ipc/").unwrap();
         Theme::export_all_to("../src/ipc/").unwrap();
         SmartSwitchingSettings::export_all_to("../src/ipc/").unwrap();
+        CommitGuardSettings::export_all_to("../src/ipc/").unwrap();
+        GuardMode::export_all_to("../src/ipc/").unwrap();
+        CommitGuardStatus::export_all_to("../src/ipc/").unwrap();
+        RepoGuardStatus::export_all_to("../src/ipc/").unwrap();
+        HookState::export_all_to("../src/ipc/").unwrap();
         SshKey::export_all_to("../src/ipc/").unwrap();
         SshAlgorithm::export_all_to("../src/ipc/").unwrap();
         Credential::export_all_to("../src/ipc/").unwrap();
         Protocol::export_all_to("../src/ipc/").unwrap();
+        PlatformCapabilities::export_all_to("../src/ipc/").unwrap();
+        PlatformOs::export_all_to("../src/ipc/").unwrap();
+        CapabilityStatus::export_all_to("../src/ipc/").unwrap();
         SmartSwitchStatus::export_all_to("../src/ipc/").unwrap();
         SwitchEvent::export_all_to("../src/ipc/").unwrap();
         SystemScan::export_all_to("../src/ipc/").unwrap();

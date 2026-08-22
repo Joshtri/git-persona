@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use crate::domain::{
     audit::AuditEntry,
+    commit_guard::{ExpectedIdentity, HookState},
     credential::{Credential, CredentialTxn, Secret, VaultSnapshot},
     identity::Identity,
     identity_switch::ResolvedRepo,
@@ -22,6 +23,14 @@ pub(crate) trait GitConfigBackend: Send + Sync {
     fn set_global_name(&self, name: &str) -> Result<(), AppError>;
     fn set_global_email(&self, email: &str) -> Result<(), AppError>;
     fn set_global_signing_key(&self, key: Option<&str>) -> Result<(), AppError>;
+
+    /// Read the repository's **local** `user.name` (`<git-dir>/config`), or the
+    /// effective value Git would resolve if local is unset. Reserved for surfacing
+    /// the current author name alongside the email in Commit Guard status.
+    #[allow(dead_code)]
+    fn get_local_name(&self, git_root: &Path) -> Result<Option<String>, AppError>;
+    /// Read the repository's local `user.email`, falling back to the global value.
+    fn get_local_email(&self, git_root: &Path) -> Result<Option<String>, AppError>;
 
     /// Write `name`/`email`/`signingkey` into the repository's **local** config
     /// (`<git-dir>/config`). Git reads local config with higher precedence than
@@ -170,8 +179,8 @@ pub(crate) trait CredentialStore: Send + Sync {
     fn load_pin(&self, id: Uuid) -> Result<Option<String>, AppError>;
 }
 
-/// The OS secure credential storage (Windows Credential Manager today; macOS
-/// Keychain / Linux Secret Service later). The **only** place secrets live.
+/// The OS secure credential storage (Windows Credential Manager, macOS Keychain,
+/// or Linux Secret Service). The **only** place secrets live.
 ///
 /// Every operation is keyed by an opaque `target` string built by the service.
 /// The canonical, Git-readable target is `git:<scheme>://<host>`; per-credential
@@ -235,6 +244,36 @@ pub(crate) trait ProfileCredentialSync: Send + Sync {
     /// Remove the path-scoped Git credential for `host`/`path`, returning the
     /// repository to the globally active credential.
     fn unpin_path(&self, host: &str, path: &str) -> Result<(), AppError>;
+}
+
+// ---- Commit Guard -------------------------------------------------------
+
+/// Installs and inspects the managed `pre-commit` hook that verifies the active
+/// Git identity at commit time. Implementations must be **non-destructive**:
+/// a pre-existing foreign hook is preserved (chained, never overwritten), and an
+/// installation that cannot guarantee execution (e.g. a `core.hooksPath`
+/// override) is reported rather than silently applied.
+///
+/// The installed hook is self-contained — it reads the expected identity and
+/// mode from the repository's local Git config and compares them against the
+/// current `user.name`/`user.email`. It never needs GitPersona to be running and
+/// never touches secrets.
+pub(crate) trait CommitHookInstaller: Send + Sync {
+    /// Report the current hook state without modifying anything.
+    fn hook_state(&self, git_root: &Path) -> Result<HookState, AppError>;
+
+    /// Install or repair the managed hook and write the expected-identity marker
+    /// into local config. Preserves any foreign hook by backing it up and
+    /// chaining it. Returns the resulting hook state.
+    fn install(&self, git_root: &Path, expected: &ExpectedIdentity)
+        -> Result<HookState, AppError>;
+
+    /// Remove the managed hook and its marker, restoring a previously chained
+    /// foreign hook. `Ok` even when nothing was installed.
+    fn uninstall(&self, git_root: &Path) -> Result<(), AppError>;
+
+    /// Read the guard marker (expected name/email/mode) from local config.
+    fn read_marker(&self, git_root: &Path) -> Result<Option<ExpectedIdentity>, AppError>;
 }
 
 // ---- Smart Identity Switching (Sprint 6) --------------------------------

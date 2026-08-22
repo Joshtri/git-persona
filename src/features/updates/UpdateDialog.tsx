@@ -3,6 +3,8 @@ import { check } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Dialog } from "@/components/dialog";
+import { openUrl } from "@/ipc/client";
+import { changelogUrl } from "@/lib/links";
 import { useBootstrapStore } from "@/stores/bootstrap";
 
 type Phase =
@@ -131,6 +133,13 @@ export function UpdateDialog() {
                     Remind me later
                   </Button>
                 )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openUrl(changelogUrl(phase.version))}
+                >
+                  What's new
+                </Button>
                 <Button type="button" variant="primary" onClick={handleDownload}>
                   Download & Install
                 </Button>

@@ -66,7 +66,8 @@ pub(crate) fn parse_https_remote(remote: &str) -> Option<(String, String)> {
 /// Metadata for a stored HTTPS Git credential.
 ///
 /// Holds **references and metadata only**. The secret lives exclusively in the
-/// OS credential vault (Windows Credential Manager) and is never a field here.
+/// OS credential vault (Windows Credential Manager, macOS Keychain, or Linux
+/// Secret Service) and is never a field here.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub(crate) struct Credential {

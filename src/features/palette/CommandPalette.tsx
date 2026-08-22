@@ -29,7 +29,9 @@ import type { ComponentType, SVGAttributes } from "react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Kbd } from "@/components/kbd";
 import { cn } from "@/lib/cn";
+import { isAvailable } from "@/lib/platform";
 import { useCredentialsStore } from "@/stores/credentials";
+import { usePlatformStore } from "@/stores/platform";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
 import { useRulesStore } from "@/stores/rules";
@@ -75,6 +77,8 @@ export function CommandPalette() {
     exportRules,
     importRules,
   } = useRulesStore();
+  const capabilities = usePlatformStore((s) => s.capabilities);
+  const canOpenManager = capabilities ? isAvailable(capabilities.native_credential_manager) : false;
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -269,16 +273,22 @@ export function CommandPalette() {
         fetchCredentials();
       },
     },
-    {
-      id: "credential-open-manager",
-      group: "Credentials",
-      label: "Open Windows Credential Manager",
-      Icon: Key,
-      action: () => {
-        openCredentialManager();
-        closePalette();
-      },
-    },
+    // Only expose the native Credential Manager where it can actually open
+    // (Windows). Gating here keeps the palette from advertising a failing action.
+    ...(canOpenManager
+      ? [
+          {
+            id: "credential-open-manager",
+            group: "Credentials",
+            label: "Open Credential Manager",
+            Icon: Key,
+            action: () => {
+              openCredentialManager();
+              closePalette();
+            },
+          } satisfies Command,
+        ]
+      : []),
   ];
 
   const rulesCommands: Command[] = [

@@ -470,6 +470,12 @@ mod tests {
             *self.signing_key.lock().unwrap() = key.map(Into::into);
             Ok(())
         }
+        fn get_local_name(&self, _git_root: &Path) -> Result<Option<String>, AppError> {
+            Ok(self.name.lock().unwrap().clone())
+        }
+        fn get_local_email(&self, _git_root: &Path) -> Result<Option<String>, AppError> {
+            Ok(self.email.lock().unwrap().clone())
+        }
         fn set_local_identity(&self, git_root: &Path, identity: &Identity) -> Result<(), AppError> {
             self.local
                 .lock()

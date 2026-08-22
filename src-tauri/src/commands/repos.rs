@@ -64,6 +64,10 @@ pub(crate) async fn repo_assign_profile(
         // globally active credential.
         let _ = state.profiles.unpin_local(Path::new(&repo.git_root));
     }
+    // Keep the Commit Guard marker in sync with the new expected identity when the
+    // repository is protected (or auto-protect is on). Best-effort — never fails
+    // the assignment.
+    state.commit_guard.refresh_after_assignment(&repo.git_root);
     Ok(repo)
 }
 

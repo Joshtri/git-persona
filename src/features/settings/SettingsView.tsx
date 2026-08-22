@@ -12,6 +12,7 @@ import { useFeedbackStore } from "@/stores/feedback";
 import { useSettingsStore } from "@/stores/settings";
 import { useSmartSwitchStore } from "@/stores/smartSwitch";
 import { Select, type SelectOption } from "../inputs/non-form/select";
+import { CommitGuardSection } from "./components/CommitGuardSection";
 import { SectionHeader } from "./components/Section.Header";
 import { SettingRow } from "./components/Section.SettingRow";
 
@@ -212,7 +213,7 @@ export function SettingsView() {
           </SettingRow>
           <SettingRow
             label="Auto credential"
-            description="Follow the profile's HTTPS credential in the Windows Credential Manager."
+            description="Follow the profile's HTTPS credential in your OS credential vault."
           >
             <Switch
               checked={smart.auto_credential}
@@ -221,6 +222,11 @@ export function SettingsView() {
           </SettingRow>
         </div>
       </section>
+
+      <Separator />
+
+      {/* Commit Guard */}
+      <CommitGuardSection />
 
       <Separator />
 

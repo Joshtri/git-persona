@@ -104,6 +104,23 @@ fn set_global(section: &str, key: &str, value: Option<&str>) -> Result<(), AppEr
     write_file(&path, &f)
 }
 
+/// Read a single key from a repository's **local** config only (no fallback).
+/// `Ok(None)` when the repo, its config, or the key is absent — a missing local
+/// value is a normal case, not an error.
+fn get_local(git_root: &Path, section: &str, key: &str) -> Result<Option<String>, AppError> {
+    let Ok(git_dir) = resolve_git_dir(git_root) else {
+        return Ok(None);
+    };
+    let config_path = git_dir.join("config");
+    match open(&config_path, gix_config::Source::Local) {
+        Ok(f) => Ok(f
+            .raw_value_by(section, None, key)
+            .ok()
+            .map(|v| String::from_utf8_lossy(v.as_ref()).into_owned())),
+        Err(_) => Ok(None),
+    }
+}
+
 impl GitConfigBackend for GixGitConfig {
     fn get_global_name(&self) -> Result<Option<String>, AppError> {
         get_global("user", "name")
@@ -127,6 +144,20 @@ impl GitConfigBackend for GixGitConfig {
 
     fn set_global_signing_key(&self, key: Option<&str>) -> Result<(), AppError> {
         set_global("user", "signingkey", key)
+    }
+
+    fn get_local_name(&self, git_root: &Path) -> Result<Option<String>, AppError> {
+        match get_local(git_root, "user", "name")? {
+            Some(v) => Ok(Some(v)),
+            None => self.get_global_name(),
+        }
+    }
+
+    fn get_local_email(&self, git_root: &Path) -> Result<Option<String>, AppError> {
+        match get_local(git_root, "user", "email")? {
+            Some(v) => Ok(Some(v)),
+            None => self.get_global_email(),
+        }
     }
 
     fn set_local_identity(&self, git_root: &Path, identity: &Identity) -> Result<(), AppError> {

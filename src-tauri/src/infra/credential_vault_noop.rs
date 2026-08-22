@@ -4,14 +4,15 @@ use crate::domain::{
 };
 use crate::error::AppError;
 
-/// Fallback [`CredentialVault`] for platforms without a native integration yet
-/// (macOS Keychain and Linux Secret Service arrive in a later sprint). Every
-/// mutating operation reports `Unsupported` so the UI can surface a clear
-/// message rather than silently losing a secret.
+/// Fallback [`CredentialVault`] for platforms with no native secure-storage
+/// integration — i.e. anything that is not Windows (Credential Manager), macOS
+/// (Keychain), or Linux (Secret Service). Every mutating operation reports
+/// `Unsupported` so the UI can surface a clear message rather than silently
+/// losing a secret.
 pub(crate) struct NoopCredentialVault;
 
 fn unsupported() -> AppError {
-    AppError::Unsupported("credential storage is only available on Windows in this release".into())
+    AppError::Unsupported("secure credential storage is not available on this platform".into())
 }
 
 impl CredentialVault for NoopCredentialVault {

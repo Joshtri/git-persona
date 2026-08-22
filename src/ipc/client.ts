@@ -5,7 +5,10 @@ import type {
   AppSettings,
   AuditEntry,
   BootstrapData,
+  CommitGuardStatus,
   Credential,
+  GuardMode,
+  PlatformCapabilities,
   Profile,
   Repo,
   RepoGroup,
@@ -39,6 +42,36 @@ export async function settingsGet(): Promise<AppSettings> {
 
 export async function settingsSet(settings: AppSettings): Promise<AppSettings> {
   return invoke<AppSettings>("settings_set", { settings });
+}
+
+// ---- Commit Guard --------------------------------------------------------
+
+export async function commitGuardStatus(): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_status");
+}
+
+export async function commitGuardSetEnabled(enabled: boolean): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_set_enabled", { enabled });
+}
+
+export async function commitGuardSetMode(mode: GuardMode): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_set_mode", { mode });
+}
+
+export async function commitGuardSetAutoProtect(enabled: boolean): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_set_auto_protect", { enabled });
+}
+
+export async function commitGuardInstall(repoId: string): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_install", { repoId });
+}
+
+export async function commitGuardRepair(repoId: string): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_repair", { repoId });
+}
+
+export async function commitGuardUninstall(repoId: string): Promise<CommitGuardStatus> {
+  return invoke<CommitGuardStatus>("commit_guard_uninstall", { repoId });
 }
 
 export async function profileList(): Promise<Profile[]> {
@@ -266,6 +299,12 @@ export async function credentialDelete(id: string): Promise<void> {
 
 export async function credentialOpenManager(): Promise<void> {
   return invoke<void>("credential_open_manager");
+}
+
+// ---- Platform ------------------------------------------------------------
+
+export async function platformCapabilities(): Promise<PlatformCapabilities> {
+  return invoke<PlatformCapabilities>("platform_capabilities");
 }
 
 export async function ruleList(): Promise<Rule[]> {

@@ -107,8 +107,11 @@ pub(crate) async fn credential_delete(
     state.credentials.delete(id)
 }
 
-/// Open the native Windows Credential Manager UI. Windows-only; a no-op error
-/// elsewhere until Keychain / Secret Service land.
+/// Open the native Windows Credential Manager UI. Windows-only — no reliable,
+/// universal way to launch a credential manager exists on Linux/macOS, so this
+/// returns `Unsupported` there. The frontend gates the action on
+/// `platform_capabilities().native_credential_manager`, so this error is a
+/// backend safety net, not something a user reaches by clicking a visible button.
 #[tauri::command]
 pub(crate) async fn credential_open_manager() -> Result<(), AppError> {
     #[cfg(windows)]

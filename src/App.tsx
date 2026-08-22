@@ -4,6 +4,7 @@ import { useBlockReload } from "@/hooks/useBlockReload";
 import { useActivityStore } from "@/stores/activity";
 import { useBootstrapStore } from "@/stores/bootstrap";
 import { useOnboardingStore } from "@/stores/onboarding";
+import { usePlatformStore } from "@/stores/platform";
 import { useProfilesStore } from "@/stores/profiles";
 import { useReposStore } from "@/stores/repos";
 import { useSettingsStore } from "@/stores/settings";
@@ -23,6 +24,9 @@ export function App() {
 
   useEffect(() => {
     fetchSettings();
+    // Resolve platform capabilities once so credential UI only ever offers
+    // actions that can actually succeed on this OS.
+    usePlatformStore.getState().fetch();
     useProfilesStore.getState().fetch();
     useActivityStore.getState().fetch();
     useReposStore.getState().fetch();

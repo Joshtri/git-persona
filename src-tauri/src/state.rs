@@ -1,7 +1,8 @@
 use crate::{
     domain::ports::CredentialVault,
     infra::{
-        audit_jsonl::JsonlAuditSink, credential_store_tauri::TauriCredentialStore,
+        audit_jsonl::JsonlAuditSink, commit_hook_fs::FsCommitHookInstaller,
+        credential_store_tauri::TauriCredentialStore,
         git_config_gix::GixGitConfig, git_dir_watcher::GitDirWatcher,
         git_meta::FsGitMetadataReader, paths, profile_store_tauri::TauriProfileStore,
         repo_scanner_fs::FsRepoScanner, repo_store_tauri::TauriRepoStore,
@@ -13,6 +14,7 @@ use crate::{
     services::bootstrap_service::BootstrapService,
     services::{
         activity_service::ActivityService,
+        commit_guard_service::CommitGuardService,
         credential_service::CredentialService,
         identity_switch_service::{
             IdentitySwitchService, ProfileIdentitySwitcher, RepoIdentityResolver,
@@ -30,7 +32,10 @@ use std::sync::Arc;
 #[cfg(windows)]
 use crate::infra::credential_vault_windows::WindowsCredentialVault;
 
-#[cfg(not(windows))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use crate::infra::credential_vault_keyring::KeyringCredentialVault;
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use crate::infra::credential_vault_noop::NoopCredentialVault;
 
 pub(crate) struct AppState {
@@ -42,6 +47,7 @@ pub(crate) struct AppState {
     pub(crate) credentials: Arc<CredentialService>,
     pub(crate) rules: Arc<RuleService>,
     pub(crate) identity_switch: Arc<IdentitySwitchService>,
+    pub(crate) commit_guard: CommitGuardService,
     pub(crate) onboarding: OnboardingService,
     pub(crate) bootstrap: BootstrapService,
 }
@@ -71,7 +77,9 @@ impl AppState {
         let cred_store = Arc::new(TauriCredentialStore::new(app.clone()));
         #[cfg(windows)]
         let cred_vault: Arc<dyn CredentialVault> = Arc::new(WindowsCredentialVault);
-        #[cfg(not(windows))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let cred_vault: Arc<dyn CredentialVault> = Arc::new(KeyringCredentialVault);
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         let cred_vault: Arc<dyn CredentialVault> = Arc::new(NoopCredentialVault);
         let credentials = Arc::new(CredentialService::new(
             cred_store,
@@ -117,6 +125,19 @@ impl AppState {
             audit.clone(),
         ));
 
+        // Commit Guard (final safety layer). Reuses the rule resolver and repo
+        // store for expected-profile resolution and the git-config backend for
+        // reading the repository's current identity; installs hooks via the
+        // filesystem adapter. Independent of Smart Switching.
+        let commit_guard = CommitGuardService::new(
+            repo_store.clone(),
+            rules.clone(),
+            store.clone(),
+            git_config.clone(),
+            Arc::new(FsCommitHookInstaller),
+            audit.clone(),
+        );
+
         let ssh = Arc::new(SshService::new(
             ssh_store,
             ssh_scanner.clone(),
@@ -148,6 +169,7 @@ impl AppState {
             credentials,
             rules,
             identity_switch,
+            commit_guard,
             onboarding,
             bootstrap: BootstrapService::new(),
         })

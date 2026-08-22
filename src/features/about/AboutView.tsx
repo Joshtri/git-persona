@@ -5,6 +5,8 @@ import { Button } from "@/components/button";
 import { Separator } from "@/components/separator";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { openUrl } from "@/ipc/client";
+import { osDisplayName } from "@/lib/platform";
+import { usePlatformStore } from "@/stores/platform";
 
 const GITHUB_URL = "https://github.com/Joshtri/git-persona";
 
@@ -31,6 +33,7 @@ const OSS_DEPS = [
 
 export function AboutView() {
   const version = useAppVersion();
+  const capabilities = usePlatformStore((s) => s.capabilities);
 
   return (
     <div className="flex flex-col gap-8 max-w-lg">
@@ -91,7 +94,7 @@ export function AboutView() {
           {(
             [
               ["Version", `v${version}`],
-              ["Platform", "Windows 11"],
+              ["Platform", capabilities ? osDisplayName(capabilities.os) : "—"],
               ["Runtime", "Tauri 2"],
               ["Frontend", "React 19"],
             ] as const

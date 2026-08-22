@@ -1,6 +1,11 @@
 pub(crate) mod audit_jsonl;
+pub(crate) mod commit_hook_fs;
 pub(crate) mod credential_store_tauri;
-#[cfg(not(windows))]
+/// macOS Keychain / Linux Secret Service via the `keyring` crate.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) mod credential_vault_keyring;
+/// Fallback for platforms without a secure OS vault integration.
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(crate) mod credential_vault_noop;
 #[cfg(windows)]
 pub(crate) mod credential_vault_windows;

@@ -30,6 +30,7 @@ export interface AppSettings {
   show_audit_log: boolean;
   auto_scan_repos: boolean;
   smart_switching: SmartSwitchingSettings;
+  commit_guard: CommitGuardSettings;
   onboarded: boolean;
   launch_at_startup: boolean;
   start_minimized: boolean;
@@ -43,6 +44,42 @@ export interface SmartSwitchingSettings {
   show_notification: boolean;
   confirm_before_switch: boolean;
   start_on_launch: boolean;
+}
+
+export type GuardMode = "Warn" | "Block";
+
+export interface CommitGuardSettings {
+  enabled: boolean;
+  mode: GuardMode;
+  auto_protect: boolean;
+}
+
+export type HookState =
+  | "NotInstalled"
+  | "Managed"
+  | "ManagedChained"
+  | "Foreign"
+  | "Unsupported";
+
+export interface RepoGuardStatus {
+  repo_id: string;
+  git_root: string;
+  repo_name: string;
+  hook_state: HookState;
+  protected: boolean;
+  mode: GuardMode | null;
+  expected_profile_id: string | null;
+  expected_label: string | null;
+  current_email: string | null;
+  identity_matches: boolean | null;
+}
+
+export interface CommitGuardStatus {
+  enabled: boolean;
+  mode: GuardMode;
+  auto_protect: boolean;
+  protected_count: number;
+  repos: RepoGuardStatus[];
 }
 
 export interface Identity {
@@ -123,6 +160,17 @@ export interface Credential {
   updated_at: string;
   last_used: string | null;
   has_pin: boolean;
+}
+
+export type PlatformOs = "Windows" | "Macos" | "Linux" | "Other";
+
+export type CapabilityStatus = "Available" | "Planned" | "Unavailable";
+
+export interface PlatformCapabilities {
+  os: PlatformOs;
+  credential_vault: CapabilityStatus;
+  native_credential_manager: CapabilityStatus;
+  git_credential_integration: CapabilityStatus;
 }
 
 export type SwitchStatus =

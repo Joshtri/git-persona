@@ -9,7 +9,9 @@ import { NoResultsState } from "@/components/feedback/NoResultsState";
 import { SearchInput } from "@/components/search-input";
 import type { Credential } from "@/ipc/types.gen";
 import { providerLabel } from "@/lib/credential-hosts";
+import { credentialsEmptyDescription, isAvailable, secureStorageSentence } from "@/lib/platform";
 import { useCredentialsStore } from "@/stores/credentials";
+import { usePlatformStore } from "@/stores/platform";
 import { useProfilesStore } from "@/stores/profiles";
 import { AssignCredentialProfileMenu } from "./AssignCredentialProfileMenu";
 import { CreateCredentialDialog } from "./CreateCredentialDialog";
@@ -41,7 +43,13 @@ function matchesQuery(credential: Credential, q: string): boolean {
 export function CredentialsView() {
   const { items, loading, error, fetch, createOpen, setCreateOpen, openManager } =
     useCredentialsStore();
+  const capabilities = usePlatformStore((s) => s.capabilities);
   const [query, setQuery] = useState("");
+
+  // Only offer the native Credential Manager on platforms that can actually
+  // open one (Windows today). Elsewhere the action would always fail, so we
+  // surface where credentials live as information instead.
+  const canOpenManager = capabilities ? isAvailable(capabilities.native_credential_manager) : false;
 
   // Load credentials and make sure profiles exist so assignment badges resolve.
   useEffect(() => {
@@ -61,16 +69,25 @@ export function CredentialsView() {
           <Badge variant="default">{items.length}</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={openManager}>
-            <Key className="size-3.5" aria-hidden="true" />
-            Credential Manager
-          </Button>
+          {canOpenManager && (
+            <Button variant="secondary" size="sm" onClick={openManager}>
+              <Key className="size-3.5" aria-hidden="true" />
+              Credential Manager
+            </Button>
+          )}
           <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="size-3.5" aria-hidden="true" />
             Add Credential
           </Button>
         </div>
       </div>
+
+      {capabilities && (
+        <p className="flex items-center gap-1.5 text-xs text-(--color-muted)">
+          <Lock className="size-3.5 shrink-0" aria-hidden="true" />
+          {secureStorageSentence(capabilities.os)}
+        </p>
+      )}
 
       <SearchInput value={query} onValueChange={setQuery} placeholder="Search credentials…" />
 
@@ -83,7 +100,11 @@ export function CredentialsView() {
           <EmptyState
             icon={<Lock className="size-8 text-(--color-muted)" aria-hidden="true" />}
             title="No credentials"
-            description="Add an HTTPS token so applying a profile can switch your Git credential automatically."
+            description={
+              capabilities
+                ? credentialsEmptyDescription(capabilities)
+                : "Add an HTTPS token to store it securely and switch it with a profile inside GitPersona."
+            }
             action={
               <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus className="size-3.5" aria-hidden="true" />

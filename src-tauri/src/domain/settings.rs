@@ -15,6 +15,11 @@ pub(crate) struct AppSettings {
     /// files written before this field was introduced loadable.
     #[serde(default)]
     pub(crate) smart_switching: SmartSwitchingSettings,
+    /// Commit Guard — the final safety layer that verifies the active Git
+    /// identity at commit time via a managed `pre-commit` hook. Independent of
+    /// Smart Switching. `#[serde(default)]` keeps older settings files loadable.
+    #[serde(default)]
+    pub(crate) commit_guard: CommitGuardSettings,
     /// `true` once the first-run onboarding wizard has been completed or skipped.
     /// `#[serde(default)]` (to `false`) makes existing users see onboarding once,
     /// then keeps them from being prompted again.
@@ -74,6 +79,51 @@ impl Default for SmartSwitchingSettings {
     }
 }
 
+/// How Commit Guard reacts when the active Git identity does not match the
+/// repository's expected profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub(crate) enum GuardMode {
+    /// Print a warning but let the commit proceed (default).
+    Warn,
+    /// Abort the commit (the hook exits non-zero).
+    Block,
+}
+
+impl Default for GuardMode {
+    fn default() -> Self {
+        Self::Warn
+    }
+}
+
+/// Configuration for Commit Guard. Read by the service that installs and repairs
+/// per-repository hooks; the installed hook itself reads the mode from the
+/// repository's local Git config so it stays self-contained and offline.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(default)]
+#[allow(clippy::struct_excessive_bools)]
+pub(crate) struct CommitGuardSettings {
+    /// Master switch. When off, no new hooks are installed and status reports
+    /// the feature as disabled. Existing installed hooks are left in place until
+    /// explicitly removed, but a disabled repo marker makes them a no-op.
+    pub(crate) enabled: bool,
+    /// Default behavior on a detected mismatch for newly protected repositories.
+    pub(crate) mode: GuardMode,
+    /// Automatically install the hook when a profile is assigned to a repository.
+    pub(crate) auto_protect: bool,
+}
+
+impl Default for CommitGuardSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: GuardMode::Warn,
+            auto_protect: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub(crate) enum Theme {
@@ -89,6 +139,7 @@ impl Default for AppSettings {
             show_audit_log: true,
             auto_scan_repos: false,
             smart_switching: SmartSwitchingSettings::default(),
+            commit_guard: CommitGuardSettings::default(),
             onboarded: false,
             launch_at_startup: false,
             start_minimized: false,

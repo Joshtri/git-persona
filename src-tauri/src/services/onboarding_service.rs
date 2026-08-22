@@ -245,6 +245,12 @@ mod tests {
         fn set_global_signing_key(&self, _key: Option<&str>) -> Result<(), AppError> {
             Ok(())
         }
+        fn get_local_name(&self, _root: &Path) -> Result<Option<String>, AppError> {
+            Ok(self.name.clone())
+        }
+        fn get_local_email(&self, _root: &Path) -> Result<Option<String>, AppError> {
+            Ok(self.email.clone())
+        }
         fn set_local_identity(&self, _root: &Path, _id: &Identity) -> Result<(), AppError> {
             Ok(())
         }
