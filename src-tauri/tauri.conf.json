@@ -25,6 +25,9 @@
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico"
       }
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   },
   "plugins": {
